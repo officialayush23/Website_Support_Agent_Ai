@@ -1,0 +1,11 @@
+chat_id,user_id,user_message,bot_response,intent_detected,timestamp
+1,2,"Hi, I want to know my order status.",Sure! Please provide your order ID to check the status.,ViewOrder,2025-10-31 01:07:57.196266
+2,8,Can you help me return a product?,Of course. Please share your order ID and reason for return.,ReturnItem,2025-10-30 16:57:57.196274
+3,8,How do I update my address?,You can update your address from your profile settings.,UpdateProfile,2025-10-30 13:39:57.196276
+4,1,What payment options do you support?,"We support COD, UPI, Credit/Debit Cards, and NetBanking.",PaymentInfo,2025-10-31 05:26:57.196278
+5,8,I have an issue with my delivery.,I’m sorry to hear that. Could you describe the issue in more detail?,DeliveryIssue,2025-10-31 07:54:57.196280
+6,6,Show me the latest electronics.,Here are the latest electronics available in our store.,BrowseProducts,2025-10-29 15:08:57.196282
+7,6,I want to cancel my order.,Order cancelled successfully. You’ll get a confirmation email shortly.,CancelOrder,2025-10-30 00:16:57.196283
+8,10,When will my refund be processed?,Your refund will be processed within 5–7 business days.,RefundStatus,2025-10-28 16:13:57.196286
+9,4,Book a meeting with support team.,Your meeting with our support team has been scheduled.,BookMeeting,2025-10-28 07:49:57.196288
+10,8,Do you offer discounts on clothing?,Yes! We currently have 20% off on all clothing items.,OffersInfo,2025-10-29 18:40:57.196290

@@ -1,0 +1,11 @@
+order_id,user_id,order_date,status,total_amount,payment_method,shipping_address,expected_delivery
+1,2,2025-10-10 14:33:57.187949,Shipped,3050.92,Card,45 FC Road,2025-11-08
+2,1,2025-08-04 14:33:57.187959,Pending,3486.47,UPI,78 Civil Lines,2025-11-06
+3,4,2025-09-29 14:33:57.187961,Returned,2463.37,NetBanking,45 FC Road,2025-11-10
+4,1,2025-09-05 14:33:57.187962,Returned,7831.17,NetBanking,78 Civil Lines,2025-11-08
+5,3,2025-09-18 14:33:57.187964,Pending,7470.66,Card,45 FC Road,2025-11-08
+6,7,2025-10-26 14:33:57.187966,Shipped,5825.3,Card,23 Marine Drive,2025-11-05
+7,10,2025-09-05 14:33:57.187967,Pending,6900.98,UPI,90 JP Nagar,2025-11-09
+8,9,2025-10-29 14:33:57.187969,Cancelled,6562.95,Card,78 Civil Lines,2025-11-02
+9,9,2025-10-07 14:33:57.187971,Cancelled,1596.73,UPI,89 Station Road,2025-11-09
+10,9,2025-09-01 14:33:57.187973,Returned,3718.31,COD,89 Station Road,2025-11-10

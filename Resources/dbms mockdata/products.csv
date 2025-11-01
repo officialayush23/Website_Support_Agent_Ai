@@ -1,0 +1,11 @@
+product_id,name,description,category,price,stock,rating,created_at,updated_at,image_url
+1,Product 1,High quality product number 1,Clothing,4724.61,167,3.7,33:57.2,33:57.2,https://unsplash.com/photos/round-white-watch-with-white-band-2cFZ_FB08UM
+2,Product 2,High quality product number 2,Home,4887.25,170,4.4,33:57.2,33:57.2,https://unsplash.com/photos/shallow-focus-photo-of-black-ray-ban-wayfarer-sunglasses-K62u25Jk6vo
+3,Product 3,High quality product number 3,Clothing,3418.28,131,5,33:57.2,33:57.2,https://unsplash.com/photos/black-fujifilm-camera-6Y3MB9ginQ0
+4,Product 4,High quality product number 4,Sports,1206.82,73,4.6,33:57.2,33:57.2,https://unsplash.com/photos/unpaired-gray-nike-running-shoe-LxVxPA1LOVM
+5,Product 5,High quality product number 5,Accessories,4073.49,13,5,33:57.2,33:57.2,https://unsplash.com/photos/brown-rope--dyxcGiP-rE
+6,Product 6,High quality product number 6,Sports,4139.51,114,3.9,33:57.2,33:57.2,https://unsplash.com/photos/a-white-and-orange-coffee-cup-sitting-on-top-of-a-table-RHNFljsLUfM
+7,Product 7,High quality product number 7,Home,2732.69,73,4.3,33:57.2,33:57.2,https://unsplash.com/photos/a-tube-of-cream-sitting-on-top-of-a-rock-o7OA8_KFQ7I
+8,Product 8,High quality product number 8,Home,4668.66,10,4.1,33:57.2,33:57.2,https://unsplash.com/photos/a-black-and-white-photo-of-a-motorcycle-helmet-zgvClXYAFcc
+9,Product 9,High quality product number 9,Electronics,3380.2,107,3.8,33:57.2,33:57.2,https://unsplash.com/photos/a-person-holding-a-black-phone-in-their-hand-upR9nhbnN_g
+10,Product 10,High quality product number 10,Sports,1382.53,31,4.7,33:57.2,33:57.2,https://unsplash.com/photos/beige-wooden-bar-stool-4kTbAMRAHtQ

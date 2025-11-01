@@ -1,0 +1,11 @@
+return_id,order_id,product_id,reason,requested_date,pickup_date,status
+1,7,7,Wrong size,2025-10-25 14:33:57.191021,2025-11-03,Completed
+2,6,9,Defective item,2025-10-19 14:33:57.191029,2025-11-03,Completed
+3,8,1,Late delivery,2025-10-14 14:33:57.191030,2025-11-04,Requested
+4,9,10,Late delivery,2025-10-26 14:33:57.191032,2025-11-01,Completed
+5,8,6,Wrong size,2025-10-24 14:33:57.191034,2025-11-04,Rejected
+6,5,4,Late delivery,2025-10-23 14:33:57.191035,2025-11-03,Approved
+7,6,7,Defective item,2025-10-29 14:33:57.191037,2025-11-04,Requested
+8,10,7,Defective item,2025-10-11 14:33:57.191039,2025-11-05,Approved
+9,10,7,Wrong size,2025-10-29 14:33:57.191041,2025-11-04,Completed
+10,4,3,Wrong size,2025-10-13 14:33:57.191043,2025-11-04,Requested

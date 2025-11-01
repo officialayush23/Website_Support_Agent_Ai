@@ -1,0 +1,11 @@
+user_id,name,email,password_hash,phone,address,city,state,pincode,date_joined,last_login
+1,Srushti Patil,srushti@gmail.com,srpp28_21,9876526239,12 MG Road,Mumbai,Maharashtra,404406,33:57.2,33:57.2
+2,Atharva More,atharva@gmail.com,yellow23_23,9876569800,45 FC Road,Pune,Maharashtra,432340,33:57.2,33:57.2
+3,Rohan Deshmukh,rohan@gmail.com,rohan_9821,9876552216,78 Civil Lines,Nagpur,Maharashtra,405479,33:57.2,33:57.2
+4,Isha Kulkarni,isha@gmail.com,hash_7243,9876531813,34 Shivaji Nagar,Nashik,Maharashtra,414944,33:57.2,33:57.2
+5,Priya Nair,priya@gmail.com,priya234_48,9876533887,89 Station Road,Aurangabad,Maharashtra,418054,33:57.2,33:57.2
+6,Aditya Sharma,aditya@gmail.com,adiii24_9854,9876565809,23 Marine Drive,Surat,Gujarat,418399,33:57.2,33:57.2
+7,Neha Gupta,neha@gmail.com,neha90_922,9876513056,56 Race Course,Ahmedabad,Gujarat,433162,33:57.2,33:57.2
+8,Vikram Joshi,vikram@gmail.com,vikram_9821,9876586317,77 Green Park,Delhi,Delhi,407809,33:57.2,33:57.2
+9,Tanya Mehta,tanya@gmail.com,rtan_ay2134,9876559431,90 JP Nagar,Bengaluru,Karnataka,424295,33:57.2,33:57.2
+10,Raj Malhotra,raj@gmail.com,rajmal_22349,9876521512,11 Banjara Hills,Hyderabad,Telangana,416748,33:57.2,33:57.2

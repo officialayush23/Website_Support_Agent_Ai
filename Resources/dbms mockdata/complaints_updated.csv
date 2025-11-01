@@ -1,0 +1,11 @@
+complaint_id,user_id,order_id,description,status,created_at,resolved_at
+1,10,5,Received a damaged phone in the last delivery.,Closed,2025-10-11 14:33:57.192624,2025-10-24 14:33:57.192662
+2,2,1,The T-shirt I ordered was of the wrong size.,Open,2025-10-28 14:33:57.192634,2025-10-22 14:33:57.192663
+3,2,7,Payment deducted but order not confirmed.,Open,2025-10-20 14:33:57.192637,2025-10-25 14:33:57.192665
+4,3,10,"Late delivery, received my parcel 5 days late.",Open,2025-10-07 14:33:57.192648,2025-10-21 14:33:57.192666
+5,1,1,Product not as described on the website.,Open,2025-10-26 14:33:57.192651,2025-10-24 14:33:57.192667
+6,9,4,Return request still pending after 10 days.,In Progress,2025-10-19 14:33:57.192653,2025-10-24 14:33:57.192669
+7,8,8,Refund not processed even after approval.,Open,2025-10-16 14:33:57.192654,2025-10-28 14:33:57.192670
+8,2,5,Received a duplicate product instead of original.,Closed,2025-10-18 14:33:57.192656,2025-10-24 14:33:57.192672
+9,3,8,Packaging was poor and product box was torn.,Resolved,2025-10-07 14:33:57.192658,2025-10-25 14:33:57.192674
+10,2,2,Customer support not responding to my queries.,Closed,2025-10-07 14:33:57.192660,2025-10-30 14:33:57.192675
