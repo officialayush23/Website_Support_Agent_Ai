@@ -24,7 +24,7 @@ function LogoutButton({ className = "" }) {
 
   return (
     <Button
-      variant="destructive"
+      variant="outline"
       onClick={handleLogout}
       className={className}
     >
