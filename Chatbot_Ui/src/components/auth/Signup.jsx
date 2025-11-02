@@ -3,21 +3,49 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import AuthLayout from "../pages/AuthLayout";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { supabase } from "@/supabaseClient"; // ✅ import Supabase client
+import { Spinner } from "../ui/spinner";
 
 function Signup() {
+  const navigate = useNavigate();
+
   const [form, setForm] = useState({
     name: "",
     email: "",
     password: "",
   });
 
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
   const handleChange = (e) =>
     setForm({ ...form, [e.target.name]: e.target.value });
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log("Signup:", form);
+    setLoading(true);
+    setError("");
+
+    try {
+      // ✅ Supabase sign-up
+      const { data, error } = await supabase.auth.signUp({
+        email: form.email,
+        password: form.password,
+        options: {
+          data: { name: form.name },
+        },
+      });
+
+      if (error) throw error;
+
+      alert("Signup successful! Check your email for confirmation.");
+      navigate("/login"); // redirect after signup
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -64,8 +92,15 @@ function Signup() {
           />
         </div>
 
-        <Button type="submit" className="w-full mt-3">
-          Sign Up
+        {error && <p className="text-red-400 text-sm">{error}</p>}
+
+        <Button type="submit" className="w-full mt-3" disabled={loading}>
+          {loading ? (
+            <span className="flex items-center gap-2">
+              <Spinner className="w-4 h-4 animate-spin" />
+              Signing Up...
+            </span>
+          ) : "Sign Up"}
         </Button>
 
         <p className="text-sm text-center text-gray-400">

@@ -6,6 +6,7 @@ import Login from './components/auth/login'
 import Chatbot from './components/pages/Chatbot'
 import Signup from './components/auth/Signup'
 import ForgotPassword from './components/auth/ForgotPass'
+import Resetpassword from './components/auth/Reset-password'
 
 function App() {
 
@@ -18,6 +19,7 @@ function App() {
         <Route path='/signup' element={<Signup />} />
         <Route path='/login' element={<Login />} />
         <Route path='/forgot-password' element={<ForgotPassword />} />
+        <Route path='/reset-password' element={<Resetpassword />} />
       </Routes>
 
     </>

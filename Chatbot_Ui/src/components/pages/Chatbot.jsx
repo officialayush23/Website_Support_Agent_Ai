@@ -19,6 +19,7 @@ import ThemeProvider from '../use_ui/theme-provider'
 import ModeToggle from '../use_ui/ModeToggle'
 import SmartTextarea from '../use_ui/AutoTextArea'
 import { InputGroupTextarea } from '../ui/input-group'
+import LogoutButton from '../auth/Logout'
 
 function Chatbot() {
     const [value, setValue] = useState("")
@@ -39,8 +40,12 @@ function Chatbot() {
 
     return (
         <section className="relative h-screen w-full transition-all duration-300 flex flex-col">
-            <div className="absolute top-4 right-4">
-                <ModeToggle />
+            <div className="absolute  top-4 right-4">
+                <ModeToggle className='cursor-pointer' />
+            </div>
+
+            <div className="absolute cursor-pointer top-4 left-4">
+                <LogoutButton className='cursor-pointer' />
             </div>
             {/* Chat messages area */}
             <div className="flex-1 transition-all duration-300 overflow-y-auto p-4">
@@ -49,9 +54,10 @@ function Chatbot() {
             </div>
 
             {/* Fixed input section */}
-            <div className="sticky transition-all duration-300 bottom-0 w-full border-t  border-gray-700 p-2">
-                <InputGroup className='rounded-3xl'>
-                    <InputGroupTextarea placeholder="Ask, Search or Chat..." 
+            <div className="sticky relative  transition-all duration-300 bottom-0 w-full border-t  border-gray-700 p-2">
+                <div className="absolute inset-0 rounded-xl border-[2px] border-transparent bg-[conic-gradient(from_0deg,theme(colors.pink.500),theme(colors.purple.500),theme(colors.blue.500),theme(colors.pink.500))] bg-[length:200%_200%] animate-gradient-spin"></div>
+                <InputGroup className='rounded-3xl  '>
+                    <InputGroupTextarea placeholder="Ask, Search or Chat..."
 
                         ref={textareaRef}
                         value={value}
