@@ -1,0 +1,6 @@
+httpx[http2]
+google-generativeai
+python-dotenv
+djangorestframework
+django-cors-headers
+cachetools

@@ -7,6 +7,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/supabaseClient";
 import { Spinner } from "../ui/spinner";
 import { toast } from "sonner";
+import { fetchWithAuth } from "../AuthHandlers/fetchWithJWT"; // ✅ new import
 
 function Login() {
   const navigate = useNavigate();
@@ -28,13 +29,28 @@ function Login() {
 
       if (error) throw error;
 
-      localStorage.setItem("supabase_session", JSON.stringify(data.session));
+      const accessToken = data.session?.access_token;
+      console.log("Login response data:", data);
+      if (!accessToken) throw new Error("No access token received");
 
-      toast.success("Login successful!");
-      navigate("/chatbot"); // Redirect to chatbot
+      // ✅ Save token
+      localStorage.setItem("access_token", accessToken);
+
+      // ✅ Use unified authenticated fetch
+      const response = await fetchWithAuth("/profile/");
+
+      if (response?.error) {
+        console.error("Backend auth failed:", response);
+        toast.error("Backend authentication failed. Please try again.");
+      } else {
+        toast.success("Login successful!");
+        navigate("/chatbot");
+      }
+
     } catch (err) {
-      setError(err.message);
-      toast.error(err.message || "Login failed. Please try again.");
+      console.error(err);
+      setError(err.message || "Login failed");
+      toast.error(err.message || "Login failed");
     } finally {
       setLoading(false);
     }
@@ -89,7 +105,9 @@ function Login() {
               <Spinner className="w-4 h-4 animate-spin" />
               Logging in...
             </span>
-          ) : "Login"}
+          ) : (
+            "Login"
+          )}
         </Button>
       </form>
     </AuthLayout>
