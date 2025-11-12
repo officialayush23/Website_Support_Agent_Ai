@@ -1,5 +1,20 @@
 # Website Support Agent AI (Daksha.ai)
 
+
+
+
+make an environment first 
+then go to Backend and install django , supabase python client, drf , corsheader, pyjwt etc etc 
+then python manage.py runserver
+
+
+go to Chatbot_Ui 
+
+
+npm rundev
+
+
+
 An AI-powered customer support chatbot built with Django backend and React frontend, integrated with Supabase for authentication and database, and Google Gemini AI for intelligent conversation handling.
 
 ## 🎯 Project Overview
