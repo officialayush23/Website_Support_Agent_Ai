@@ -27,7 +27,9 @@ media/
 *.bak
 *.swp
 *.swo
+.env 
 
+websup/
 # --- Node / React frontend ---
 frontend/node_modules/
 frontend/build/
