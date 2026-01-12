@@ -1,0 +1,59 @@
+# app/api/routers/admin.py
+from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+from uuid import UUID
+
+from app.core.database import get_db
+from app.core.auth import get_current_user
+from app.services.product_service import (
+    create_product,
+    update_product,
+    delete_product,
+)
+from app.schema.schemas import ProductCreate, ProductUpdate
+from app.utils.api_error import forbidden
+
+router = APIRouter(prefix="/admin", tags=["Admin"])
+
+
+def admin_only(user):
+    if user["role"] != "admin":
+        forbidden()
+
+
+@router.post("/products")
+async def create(
+    payload: ProductCreate,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    admin_only(user)
+    p = await create_product(db, payload.model_dump())
+    return {"id": p.id}
+
+
+@router.patch("/products/{product_id}")
+async def update(
+    product_id: UUID,
+    payload: ProductUpdate,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    admin_only(user)
+    await update_product(
+        db,
+        product_id,
+        payload.model_dump(exclude_unset=True),
+    )
+    return {"status": "updated"}
+
+
+@router.delete("/products/{product_id}")
+async def delete(
+    product_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    admin_only(user)
+    await delete_product(db, product_id)
+    return {"status": "deleted"}

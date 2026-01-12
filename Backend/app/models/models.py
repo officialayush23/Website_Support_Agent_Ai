@@ -11,13 +11,23 @@ from sqlalchemy import (
     CheckConstraint,
     Integer,
 )
+from pgvector.sqlalchemy import Vector
+embedding = Column(Vector(768))
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
-
 from app.core.database import Base
-
-
+from app.models.enums import (
+    order_status_enum,
+    payment_status_enum,
+    complaint_status_enum,
+    complaint_created_by_enum,
+    conversation_status_enum,
+    message_role_enum,
+    agent_action_status_enum,
+    refund_status_enum,
+)
 class User(Base):
     __tablename__ = "users"
 
@@ -40,7 +50,7 @@ class Address(Base):
     state = Column(Text)
     pincode = Column(Text)
     country = Column(Text)
-    is_default = Column(Boolean)
+    is_default = Column(Boolean, server_default="false")
     created_at = Column(TIMESTAMP, server_default=func.now())
 
 
@@ -53,8 +63,9 @@ class Product(Base):
     category = Column(Text)
     price = Column(Numeric, nullable=False)
     attributes = Column(JSONB)
-    is_active = Column(Boolean)
+    is_active = Column(Boolean, server_default="true")
     created_at = Column(TIMESTAMP, server_default=func.now())
+    images = relationship("ProductImage", backref="product")
 
 
 class ProductImage(Base):
@@ -76,7 +87,8 @@ class Store(Base):
     state = Column(Text)
     latitude = Column(Numeric)
     longitude = Column(Numeric)
-    is_active = Column(Boolean)
+    is_active = Column(Boolean, server_default="true")
+
 
 
 class Inventory(Base):
@@ -105,7 +117,8 @@ class CartItem(Base):
         UUID, ForeignKey("carts.id", ondelete="CASCADE"), primary_key=True
     )
     product_id = Column(UUID, ForeignKey("products.id"), primary_key=True)
-    quantity = Column(Integer)
+    quantity = Column(Integer, nullable=False)
+    product = relationship("Product")
 
 
 class Order(Base):
@@ -114,9 +127,14 @@ class Order(Base):
     id = Column(UUID, primary_key=True)
     user_id = Column(UUID, ForeignKey("users.id"))
     address_id = Column(UUID, ForeignKey("addresses.id"))
-    status = Column(String)
-    total = Column(Numeric)
+    status = Column(
+    order_status_enum,
+    nullable=False,
+    server_default="pending",
+)
+    total = Column(Numeric, nullable=False)
     created_at = Column(TIMESTAMP, server_default=func.now())
+
 
 
 class OrderItem(Base):
@@ -127,6 +145,7 @@ class OrderItem(Base):
     product_id = Column(UUID, ForeignKey("products.id"))
     quantity = Column(Integer)
     price = Column(Numeric)
+    product = relationship("Product")
 
 
 class Payment(Base):
@@ -135,7 +154,12 @@ class Payment(Base):
     id = Column(UUID, primary_key=True)
     order_id = Column(UUID, ForeignKey("orders.id"))
     provider = Column(Text)
-    status = Column(Text)
+    status = Column(
+    payment_status_enum,
+    nullable=False,
+    server_default="initiated",
+)
+
     amount = Column(Numeric)
     created_at = Column(TIMESTAMP, server_default=func.now())
 
@@ -145,7 +169,11 @@ class Conversation(Base):
 
     id = Column(UUID, primary_key=True)
     user_id = Column(UUID, ForeignKey("users.id"))
-    status = Column(Text)
+    status = Column(
+    conversation_status_enum,
+    server_default="active",
+)
+
     context = Column(JSONB)
     last_message_at = Column(TIMESTAMP, server_default=func.now())
     created_at = Column(TIMESTAMP, server_default=func.now())
@@ -155,10 +183,8 @@ class Message(Base):
     __tablename__ = "messages"
 
     id = Column(UUID, primary_key=True)
-    conversation_id = Column(
-        UUID, ForeignKey("conversations.id", ondelete="CASCADE")
-    )
-    role = Column(Text)
+    conversation_id = Column(UUID, ForeignKey("conversations.id", ondelete="CASCADE"))
+    role = Column(message_role_enum, nullable=False)
     content = Column(Text)
     created_at = Column(TIMESTAMP, server_default=func.now())
 
@@ -170,9 +196,17 @@ class Complaint(Base):
     user_id = Column(UUID, ForeignKey("users.id"))
     order_id = Column(UUID, ForeignKey("orders.id"))
     description = Column(Text)
-    status = Column(Text)
-    created_by = Column(Text)
+    status = Column(
+    complaint_status_enum,
+    server_default="open",
+)
+    created_by = Column(
+    complaint_created_by_enum,
+    server_default="agent",
+)
+
     created_at = Column(TIMESTAMP, server_default=func.now())
+
 
 
 class Meeting(Base):
@@ -188,12 +222,15 @@ class AgentAction(Base):
     __tablename__ = "agent_actions"
 
     id = Column(UUID, primary_key=True)
-    conversation_id = Column(
-        UUID, ForeignKey("conversations.id", ondelete="CASCADE")
-    )
+    conversation_id = Column(UUID, ForeignKey("conversations.id", ondelete="CASCADE"))
     action_type = Column(Text)
     payload = Column(JSONB)
-    status = Column(Text)
+    status = Column(
+    agent_action_status_enum,
+    server_default="executed",
+)
+    confidence = Column(Numeric, nullable=True)
+
     created_at = Column(TIMESTAMP, server_default=func.now())
 
 
@@ -203,6 +240,102 @@ class Embedding(Base):
     id = Column(UUID, primary_key=True)
     source_type = Column(Text)
     source_id = Column(UUID)
-    embedding = Column(Text)  # pgvector handled at DB level
-    metadata = Column(JSONB)
+
+    embedding = Column(Vector(768)) # pgvector handled at DB level
+
+    meta = Column("metadata", JSONB)  # ✅ alias, keeps DB intact
+
     created_at = Column(TIMESTAMP, server_default=func.now())
+
+
+class Offer(Base):
+    __tablename__ = "offers"
+
+    id = Column(UUID, primary_key=True)
+    title = Column(Text)
+    description = Column(Text)
+
+    rules = Column(JSONB, nullable=False)
+
+    priority = Column(Integer, default=0)
+    stackable = Column(Boolean, default=False)
+
+    starts_at = Column(TIMESTAMP)
+    ends_at = Column(TIMESTAMP)
+
+    is_active = Column(Boolean, default=True)
+
+    created_by = Column(UUID, ForeignKey("users.id"))
+    created_at = Column(TIMESTAMP, server_default=func.now())
+    updated_at = Column(TIMESTAMP)
+
+
+class Refund(Base):
+    __tablename__ = "refunds"
+
+    id = Column(UUID, primary_key=True)
+    order_id = Column(UUID, ForeignKey("orders.id"))
+
+    reason = Column(Text)
+
+    status = Column(
+    refund_status_enum,
+    nullable=False,
+    server_default="initiated",
+)
+
+    created_at = Column(TIMESTAMP, server_default=func.now())
+
+
+from app.models.enums import user_event_type_enum
+
+class UserEvent(Base):
+    __tablename__ = "user_events"
+
+    id = Column(UUID, primary_key=True)
+    user_id = Column(UUID, ForeignKey("users.id", ondelete="CASCADE"))
+
+    event_type = Column(user_event_type_enum, nullable=False)
+
+    product_id = Column(UUID, ForeignKey("products.id"), nullable=True)
+    order_id = Column(UUID, ForeignKey("orders.id"), nullable=True)
+
+    meta = Column("metadata", JSONB)
+    created_at = Column(TIMESTAMP, server_default=func.now())
+
+
+class UserPreference(Base):
+    __tablename__ = "user_preferences"
+
+    user_id = Column(UUID, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+
+    preferred_categories = Column(JSONB, server_default="{}")
+    preferred_price_range = Column(JSONB, server_default="{}")
+    last_seen_products = Column(ARRAY(UUID), server_default="{}")
+
+
+    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+
+
+from app.models.enums import delivery_status_enum
+
+class Delivery(Base):
+    __tablename__ = "deliveries"
+
+    id = Column(UUID, primary_key=True)
+    order_id = Column(UUID, ForeignKey("orders.id", ondelete="CASCADE"), unique=True)
+    user_id = Column(UUID, ForeignKey("users.id", ondelete="CASCADE"))
+    address_id = Column(UUID, ForeignKey("addresses.id"))
+
+    status = Column(delivery_status_enum, nullable=False, default="pending")
+
+    courier = Column(Text)
+    tracking_id = Column(Text)
+    eta = Column(TIMESTAMP)
+
+    created_at = Column(TIMESTAMP, server_default=func.now())
+    updated_at = Column(
+        TIMESTAMP,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
