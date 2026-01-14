@@ -1,11 +1,13 @@
 # app/services/delivery_service.py
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from uuid import UUID, uuid4
 from datetime import datetime
 
-from app.models.models import Delivery, Order
-from app.models.py_enums import DeliveryStatus, OrderStatus
+from app.models.models import Delivery, Order, OrderItem
+from app.models.enums import delivery_status_enum, order_status_enum
+from app.schema.enums import DeliveryStatus, OrderStatus
 from app.utils.api_error import not_found, bad_request
 from app.services.agent_action_service import log_agent_action
 from app.services.handoff_service import escalate_to_human
@@ -31,14 +33,50 @@ DELIVERY_TRANSITIONS = {
     DeliveryStatus.cancelled: set(),
 }
 
-# sync order status when delivery resolves
 ORDER_SYNC = {
     DeliveryStatus.delivered: OrderStatus.delivered,
     DeliveryStatus.cancelled: OrderStatus.cancelled,
 }
 
 
-# ---------------- CREATE DELIVERY ---------------- #
+# ---------------- ADMIN LIST ---------------- #
+
+async def list_deliveries_admin(db: AsyncSession):
+    res = await db.execute(
+        select(Delivery)
+        .options(
+            selectinload(Delivery.order)
+            .selectinload(Order.items)
+            .selectinload(OrderItem.product)
+        )
+        .order_by(Delivery.created_at.desc())
+    )
+
+    deliveries = []
+    for d in res.scalars():
+        deliveries.append({
+            "delivery_id": d.id,
+            "status": d.status,
+            "courier": d.courier,
+            "tracking_id": d.tracking_id,
+            "order_id": d.order_id,
+            "user_id": d.user_id,
+            "total": float(d.order.total),
+            "products": [
+                {
+                    "product_id": i.product.id,
+                    "name": i.product.name,
+                    "quantity": i.quantity,
+                    "price": float(i.price),
+                }
+                for i in d.order.items
+            ],
+        })
+
+    return deliveries
+
+
+# ---------------- CREATE ---------------- #
 
 async def create_delivery(
     db: AsyncSession,
@@ -54,7 +92,7 @@ async def create_delivery(
         order_id=order.id,
         user_id=order.user_id,
         address_id=order.address_id,
-        status=DeliveryStatus.pending.value,
+        status=delivery_status_enum.pending,
     )
 
     db.add(delivery)
@@ -75,7 +113,7 @@ async def create_delivery(
     return delivery
 
 
-# ---------------- UPDATE DELIVERY ---------------- #
+# ---------------- UPDATE ---------------- #
 
 async def update_delivery(
     db: AsyncSession,
@@ -111,7 +149,6 @@ async def update_delivery(
     if eta is not None:
         delivery.eta = eta
 
-    # sync order status if needed
     if new_status in ORDER_SYNC:
         order = await db.get(Order, delivery.order_id)
         order.status = ORDER_SYNC[new_status].value
@@ -134,7 +171,7 @@ async def update_delivery(
     return delivery
 
 
-# ---------------- FETCH DELIVERY ---------------- #
+# ---------------- USER FETCH ---------------- #
 
 async def get_delivery_for_order(
     db: AsyncSession,
@@ -143,8 +180,10 @@ async def get_delivery_for_order(
 ):
     res = await db.execute(
         select(Delivery)
-        .where(Delivery.order_id == order_id)
-        .where(Delivery.user_id == user_id)
+        .where(
+            Delivery.order_id == order_id,
+            Delivery.user_id == user_id,
+        )
     )
 
     delivery = res.scalar_one_or_none()

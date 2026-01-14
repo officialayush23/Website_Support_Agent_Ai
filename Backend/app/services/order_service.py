@@ -1,54 +1,60 @@
 # app/services/order_service.py
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from uuid import UUID, uuid4
-
+from sqlalchemy.orm import selectinload
 from app.models.models import Order, OrderItem, Cart, CartItem, Address
-from app.models.py_enums import OrderStatus
 from app.utils.api_error import bad_request, not_found
+from app.schema.enums import OrderStatus
+
+ORDER_CANCEL_ALLOWED = {"pending"}
 
 
-ORDER_CANCEL_ALLOWED = {OrderStatus.pending}
-
-
+# =========================
+# CREATE ORDER
+# =========================
 async def create_order(
     db: AsyncSession,
     user_id: UUID,
     address_id: UUID,
 ):
-    # validate address ownership
+    # 🔒 Validate address
     address = await db.get(Address, address_id)
     if not address or address.user_id != user_id:
         not_found("Address")
 
-    # fetch cart
-    cart = await db.execute(
+    # 🛒 Fetch cart
+    res = await db.execute(
         select(Cart).where(Cart.user_id == user_id)
     )
-    cart = cart.scalar_one_or_none()
+    cart = res.scalar_one_or_none()
     if not cart:
         bad_request("Cart is empty")
 
-    items = await db.execute(
+    # 🧾 Fetch cart items + products (NO N+1)
+    res = await db.execute(
         select(CartItem)
         .where(CartItem.cart_id == cart.id)
+        .options(selectinload(CartItem.product))
     )
-    items = items.scalars().all()
+    items = res.scalars().all()
 
     if not items:
         bad_request("Cart is empty")
 
+    # 📦 Create order
     order = Order(
         id=uuid4(),
         user_id=user_id,
         address_id=address_id,
-        status=OrderStatus.pending.value,
+        status="pending",   # ✅ string, DB enum handles it
         total=0,
     )
     db.add(order)
     await db.flush()
 
-    total = 0
+    total = 0.0
+
     for item in items:
         price = float(item.product.price)
         total += price * item.quantity
@@ -65,21 +71,36 @@ async def create_order(
 
     order.total = total
 
-    # clear cart
-    for item in items:
-        await db.delete(item)
+    # 🧹 Clear cart in one shot
+    await db.execute(
+        delete(CartItem).where(CartItem.cart_id == cart.id)
+    )
 
     await db.commit()
     await db.refresh(order)
     return order
 
 
-async def list_orders(db: AsyncSession, user_id: UUID):
+# =========================
+# LIST ORDERS
+# =========================
+async def list_orders(
+    db: AsyncSession,
+    user_id: UUID,
+):
     res = await db.execute(
-        select(Order).where(Order.user_id == user_id)
+        select(Order)
+        .where(Order.user_id == user_id)
+        .options(selectinload(Order.items))
+        .order_by(Order.created_at.desc())
     )
     return res.scalars().all()
 
+
+# =========================
+# CANCEL ORDER
+# =========================
+from app.services.inventory_service import release_inventory_for_order
 
 async def cancel_order(
     db: AsyncSession,
@@ -90,10 +111,11 @@ async def cancel_order(
     if not order or order.user_id != user_id:
         not_found("Order")
 
-    current = OrderStatus(order.status)
-
-    if current not in ORDER_CANCEL_ALLOWED:
+    if order.status != OrderStatus.pending.value:
         bad_request("Order cannot be cancelled")
 
     order.status = OrderStatus.cancelled.value
+
+    await release_inventory_for_order(db, order_id)
+
     await db.commit()

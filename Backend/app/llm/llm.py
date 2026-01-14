@@ -7,60 +7,50 @@ from app.core.config import settings
 
 client = Client(api_key=settings.GEMINI_API_KEY)
 
+# app/llm/llm.py (IMPORTANT CHANGE)
 
 async def call_llm_with_tools(history, message, tools, conversation_id=None):
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        *history,
-        {"role": "user", "content": message},
-    ]
-
     response = client.models.generate_content(
         model="gemini-2.5-flash",
-        contents=messages,
+        contents=history + [message],
         config={"tools": TOOLS},
     )
 
     part = response.candidates[0].content.parts[0]
 
-    # ---------- TOOL CALL ----------
+    # TOOL CALL
     if part.function_call:
         name = part.function_call.name
         args = part.function_call.args
 
         if not hasattr(tools, name):
-            return {
-                "message": "That action is not allowed.",
-                "actions": [],
-            }, {
-                "tool_name": None,
-                "confidence": 0.2,
-                "conversation_id": conversation_id,
-            }
+            return (
+                {"message": "Action not allowed", "actions": []},
+                {"confidence": 0.2, "tool_name": None},
+            )
 
         result = await getattr(tools, name)(**args)
 
-        return {
-            "message": "Done.",
-            "data": result,
-            "actions": [],
-        }, {
-            "tool_name": name,
-            "confidence": 0.9,
-            "conversation_id": conversation_id,
-        }
+        return (
+            {
+                "message": "Done ✅",
+                "actions": [],
+                "data": result,
+            },
+            {
+                "confidence": 0.9,
+                "tool_name": name,
+            },
+        )
 
-    # ---------- NORMAL RESPONSE ----------
-    try:
-        parsed = json.loads(part.text)
-    except Exception:
-        parsed = {
+    # NORMAL CHAT
+    return (
+        {
             "message": part.text,
             "actions": [],
-        }
-
-    return parsed, {
-        "tool_name": None,
-        "confidence": 0.6,
-        "conversation_id": conversation_id,
-    }
+        },
+        {
+            "confidence": 0.7,
+            "tool_name": None,
+        },
+    )

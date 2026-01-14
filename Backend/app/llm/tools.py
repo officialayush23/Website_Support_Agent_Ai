@@ -1,17 +1,15 @@
 # app/llm/tools.py
 from uuid import UUID
-from typing import Optional, Dict, Any
+from typing import Dict, Any
+
+from app.utils.api_error import bad_request
+
 
 class Tools:
-    """
-    Every method here is a capability the chatbot has.
-    """
-
     def __init__(self, db, user_id):
         self.db = db
         self.user_id = user_id
 
-        # 🔌 service wiring
         from app.services import (
             product_service,
             cart_service,
@@ -19,9 +17,9 @@ class Tools:
             refund_service,
             address_service,
             recommendation_service,
-            offer_service,
             order_service,
-            user_service,delivery_service
+            user_service,
+            delivery_service,
         )
 
         self.product_service = product_service
@@ -30,16 +28,13 @@ class Tools:
         self.refund_service = refund_service
         self.address_service = address_service
         self.reco_service = recommendation_service
-        self.offer_service = offer_service
         self.order_service = order_service
         self.user_service = user_service
         self.delivery_service = delivery_service
 
     # ---------- PRODUCTS ----------
-    async def list_products(self, filters: Optional[Dict[str, Any]] = None):
-        return await self.product_service.list_products(
-            self.db, filters, self.user_id
-        )
+    async def list_products(self):
+        return await self.product_service.list_products(self.db, self.user_id)
 
     async def view_product(self, product_id: UUID):
         return await self.product_service.get_product(
@@ -49,11 +44,6 @@ class Tools:
     async def recommend_products(self):
         return await self.reco_service.recommend_for_user(
             self.db, self.user_id
-        )
-
-    async def offers_for_product(self, product_id: UUID):
-        return await self.offer_service.get_offers_for_product(
-            self.db, product_id
         )
 
     # ---------- CART ----------
@@ -104,8 +94,8 @@ class Tools:
         )
 
     async def get_delivery_status(self, order_id: UUID):
-        return await self.order_service.get_status(
-            self.db, self.user_id, order_id
+        return await self.delivery_service.get_delivery_for_order(
+            self.db, order_id, self.user_id
         )
 
     # ---------- COMPLAINTS ----------
@@ -141,16 +131,13 @@ class Tools:
             self.db, self.user_id, prefs
         )
         return {"status": "updated"}
-        # ---------- DELIVERY ----------
 
-    async def update_delivery_status(
-        self,
-        delivery_id: UUID,
-        status: str,
-    ):
-        return await self.delivery_service.update_delivery(
-            self.db,
-            delivery_id,
-            DeliveryStatus(status),
+    async def update_user_profile(self, name: str | None = None):
+        data = {}
+        if name:
+            data["name"] = name
+
+        await self.user_service.update_me(
+            self.db, self.user_id, data
         )
-
+        return {"status": "updated"}

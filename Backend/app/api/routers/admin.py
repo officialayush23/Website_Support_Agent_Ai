@@ -1,10 +1,13 @@
 # app/api/routers/admin.py
+from app.models.models import GlobalInventory
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
 
 from app.core.database import get_db
 from app.core.auth import get_current_user
+from app.schema.schemas import GlobalStockUpdate
+from app.services.inventory_admin_service import update_global_stock
 from app.services.product_service import (
     create_product,
     update_product,
@@ -57,3 +60,53 @@ async def delete(
     admin_only(user)
     await delete_product(db, product_id)
     return {"status": "deleted"}
+
+
+
+
+
+
+
+@router.patch("/inventory/global")
+async def set_global_stock(
+    payload: GlobalStockUpdate,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    if user["role"] != "admin":
+        forbidden()
+
+    await update_global_stock(
+        db,
+        payload.product_id,
+        payload.total_stock,
+    )
+    return {"status": "updated"}
+
+
+@router.get("/products/{product_id}/stock")
+async def product_stock(
+    product_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    if user["role"] != "admin":
+        forbidden()
+
+    gi = await db.get(GlobalInventory, product_id)
+
+    if not gi:
+        gi = GlobalInventory(
+            product_id=product_id,
+            total_stock=0,
+            reserved_stock=0,
+        )
+        db.add(gi)
+        await db.commit()
+        await db.refresh(gi)
+
+    return {
+        "total": gi.total_stock,
+        "reserved": gi.reserved_stock,
+        "available": gi.total_stock - gi.reserved_stock,
+    }

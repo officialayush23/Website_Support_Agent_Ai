@@ -1,4 +1,5 @@
 # app/llm/agent.py
+# app/llm/agent.py
 from app.llm.memory import AgentMemory
 from app.llm.tools import Tools
 from app.llm.llm import call_llm_with_tools
@@ -17,6 +18,7 @@ async def run_agent(user_id, user_message, conversation_id):
 
         history = await memory.read()
 
+        # 🔹 LLM CALL
         response, meta = await call_llm_with_tools(
             history=history,
             message=user_message,
@@ -24,9 +26,10 @@ async def run_agent(user_id, user_message, conversation_id):
             conversation_id=conversation_id,
         )
 
-        confidence = meta["confidence"]
-        tool_used = meta["tool_name"]
+        confidence = meta.get("confidence", 0.5)
+        tool_used = meta.get("tool_name")
 
+        # 🔹 LOG AGENT ACTION
         await log_agent_action(
             db=db,
             conversation_id=conversation_id,
@@ -38,6 +41,7 @@ async def run_agent(user_id, user_message, conversation_id):
             confidence=confidence,
         )
 
+        # 🔹 HUMAN HANDOFF
         if confidence < CONFIDENCE_THRESHOLD:
             await escalate_to_human(
                 db=db,
@@ -45,7 +49,17 @@ async def run_agent(user_id, user_message, conversation_id):
                 reason="Low agent confidence",
             )
 
+        # 🔹 MEMORY (store plain text only)
         await memory.append("user", user_message)
-        await memory.append("assistant", response["message"])
+        await memory.append(
+            "assistant",
+            response.get("message", ""),
+        )
 
-        return response
+        # 🔹 ALWAYS RETURN JSON FOR UI
+        return {
+            "message": response.get("message", ""),
+            "actions": response.get("actions", []),
+            "confidence": confidence,
+            "tool_used": tool_used,
+        }

@@ -1,3 +1,4 @@
+# app/models/enums.py
 from sqlalchemy import Enum
 
 order_status_enum = Enum(

@@ -2,8 +2,9 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
-
+from app.schema.schemas import CheckoutCreate, OrderOut
 from app.core.database import get_db
+from app.services.cart_service import checkout
 from app.core.auth import get_current_user
 from app.services.cart_service import (
     get_cart_items,
@@ -62,3 +63,16 @@ async def clear(
 ):
     await clear_cart(db, user["user_id"])
     return {"status": "cleared"}
+
+
+@router.post("/checkout", response_model=OrderOut)
+async def checkout_api(
+    payload: CheckoutCreate,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    return await checkout(
+        db=db,
+        user_id=user["user_id"],
+        payload=payload,
+    )

@@ -7,8 +7,10 @@ from app.core.database import get_db
 from app.core.auth import get_current_user
 from app.services.offer_service import (
     list_active_offers,
+    list_all_offers,
     create_offer,
     update_offer,
+    deactivate_offer,
 )
 from app.schema.schemas import OfferCreate, OfferUpdate, OfferOut
 from app.utils.api_error import forbidden
@@ -19,6 +21,17 @@ router = APIRouter(prefix="/offers", tags=["Offers"])
 @router.get("/", response_model=list[OfferOut])
 async def active(db: AsyncSession = Depends(get_db)):
     return await list_active_offers(db)
+
+
+@router.get("/admin", response_model=list[OfferOut])
+async def admin_list(
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    if user["role"] != "admin":
+        forbidden()
+
+    return await list_all_offers(db)
 
 
 @router.post("/admin", response_model=OfferOut)
@@ -52,3 +65,16 @@ async def update(
         offer_id=offer_id,
         data=payload.model_dump(exclude_unset=True),
     )
+
+
+@router.delete("/admin/{offer_id}")
+async def deactivate(
+    offer_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    if user["role"] != "admin":
+        forbidden()
+
+    await deactivate_offer(db, offer_id)
+    return {"status": "deactivated"}

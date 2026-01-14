@@ -1,45 +1,40 @@
 # app/services/recommendation_service.py
-# app/services/recommendation_service.py
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
-from app.models.models import Product, UserEvent
-from app.models.enums import user_event_type_enum
 
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from app.models.models import Product, UserPreference
 
 async def recommend_for_user(
     db: AsyncSession,
     user_id,
     limit: int = 10,
 ):
-    """
-    V1 recommendation:
-    - based on user's past product interactions
-    - only active products
-    - popularity-weighted
-    """
+    pref = await db.get(UserPreference, user_id)
 
-    res = await db.execute(
-        select(Product)
-        .join(UserEvent, UserEvent.product_id == Product.id)
-        .where(
-            UserEvent.user_id == user_id,
-            Product.is_active == True,
-        )
-        .group_by(Product.id)
-        .order_by(func.count(UserEvent.id).desc())
-        .limit(limit)
-    )
+    q = select(Product).where(Product.is_active == True)
 
+    if pref:
+        if pref.preferred_categories:
+            q = q.where(Product.category.in_(pref.preferred_categories))
+
+        pr = pref.preferred_price_range or {}
+        if pr.get("min") is not None and pr.get("max") is not None:
+            q = q.where(
+                Product.price.between(pr["min"], pr["max"])
+            )
+
+    q = q.order_by(Product.created_at.desc()).limit(limit)
+    res = await db.execute(q)
     products = res.scalars().all()
 
-    # fallback for cold-start users
+    # fallback
     if not products:
-        fallback = await db.execute(
+        res = await db.execute(
             select(Product)
             .where(Product.is_active == True)
             .order_by(Product.created_at.desc())
             .limit(limit)
         )
-        return fallback.scalars().all()
+        return res.scalars().all()
 
     return products

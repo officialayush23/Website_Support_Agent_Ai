@@ -2,7 +2,8 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
-
+from app.schema.schemas import DeliveryAdminOut
+from app.services.delivery_service import list_deliveries_admin
 from app.core.database import get_db
 from app.core.auth import get_current_user
 from app.schema.schemas import DeliveryCreate, DeliveryUpdate, DeliveryOut
@@ -14,7 +15,15 @@ from app.services.delivery_service import (
 from app.utils.api_error import forbidden
 
 router = APIRouter(prefix="/delivery", tags=["Delivery"])
+@router.get("/admin", response_model=list[DeliveryAdminOut])
+async def list_admin(
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    if user["role"] not in ("admin", "support"):
+        forbidden()
 
+    return await list_deliveries_admin(db)
 
 @router.post("/admin", response_model=DeliveryOut)
 async def create(

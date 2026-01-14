@@ -1,13 +1,11 @@
 # app/core/auth.py
-
-from fastapi import Depends, HTTPException, status,WebSocket
+from fastapi import Depends, HTTPException, status, WebSocket
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import jwt
 
 from app.core.config import settings
 
 security = HTTPBearer()
-
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
@@ -20,50 +18,42 @@ def get_current_user(
             settings.SUPABASE_JWT_SECRET,
             algorithms=["HS256"],
             audience="authenticated",
+            leeway=10,
         )
-    except jwt.PyJWTError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-        )
+    except jwt.PyJWTError as e:
+        raise HTTPException(status_code=401, detail=str(e))
 
     user_id = payload.get("sub")
-    role = payload.get("role")
+    email = payload.get("email")
+
+    app_role = (
+        payload.get("user_metadata", {}).get("role")
+        or payload.get("app_metadata", {}).get("role")
+        or "user"
+    )
 
     if not user_id:
-        raise HTTPException(status_code=401, detail="Invalid token payload")
+        raise HTTPException(status_code=401, detail="Invalid token")
 
     return {
         "user_id": user_id,
-        "role": role,
-        "email": payload.get("email"),
+        "email": email,
+        "role": app_role,  # 👈 THIS is what admin checks should use
     }
-async def get_user_from_ws(ws: WebSocket):
-    """
-    Authenticate WebSocket using Supabase JWT.
-    Expects:
-      Authorization: Bearer <token>
-    OR
-      ?token=<jwt>
-    """
 
+async def get_user_from_ws(ws: WebSocket):
     token = None
 
-    # 1. Header
     auth = ws.headers.get("authorization")
     if auth and auth.startswith("Bearer "):
         token = auth.split(" ")[1]
 
-    # 2. Query param fallback
     if not token:
         token = ws.query_params.get("token")
 
     if not token:
         await ws.close(code=1008)
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing auth token",
-        )
+        raise HTTPException(401, "Missing token")
 
     try:
         payload = jwt.decode(
@@ -74,13 +64,10 @@ async def get_user_from_ws(ws: WebSocket):
         )
     except jwt.PyJWTError:
         await ws.close(code=1008)
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token",
-        )
+        raise HTTPException(401, "Invalid token")
 
     return {
-        "user_id": payload.get("sub"),
-        "role": payload.get("role"),
+        "user_id": payload["sub"],
         "email": payload.get("email"),
+        "role": payload.get("user_metadata", {}).get("role", "user"),
     }

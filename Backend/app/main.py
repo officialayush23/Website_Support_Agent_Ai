@@ -7,7 +7,7 @@ from app.api.routers import (
     carts,
     orders,
     support,
-    admin,payments,stores,offers,delivery,complaints,product_images,recommendations,addresses
+    admin,payments,stores,offers,delivery,complaints,product_images,recommendations,addresses,users,events,refunds,pickups,recommendations,handoff
     
 )
 from app.api.ws import chat
@@ -29,7 +29,11 @@ app.include_router(product_images.router)
 app.include_router(recommendations.router)
 app.include_router(chat.router)
 app.include_router(addresses.router)
-
+app.include_router(users.router)
+app.include_router(refunds.router)
+app.include_router(events.router)
+app.include_router(pickups.router)
+app.include_router(handoff.router)
 @app.get("/health")
 async def health():
     return {"status": "ok"}

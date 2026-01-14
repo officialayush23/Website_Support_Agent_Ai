@@ -2,7 +2,8 @@
 from uuid import uuid4, UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.models import AgentAction
-from app.models.py_enums import AgentActionStatus
+from app.models.enums import agent_action_status_enum
+
 
 async def log_agent_action(
     db: AsyncSession,
@@ -10,14 +11,14 @@ async def log_agent_action(
     action_type: str,
     payload: dict,
     confidence: float | None = None,
-    status: AgentActionStatus = AgentActionStatus.executed,
+    status: str = "executed",
 ):
     action = AgentAction(
         id=uuid4(),
         conversation_id=conversation_id,
         action_type=action_type,
         payload=payload,
-        status=status.value,
+        status=status,  # ✅ string enum value
         confidence=confidence,
     )
     db.add(action)

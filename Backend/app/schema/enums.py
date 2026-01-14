@@ -57,3 +57,16 @@ class DeliveryStatus(str, Enum):
     delivered = "delivered"
     failed = "failed"
     cancelled = "cancelled"
+
+
+class UserEventType(str, Enum):
+    view_product = "view_product"
+    click_product = "click_product"
+    search = "search"
+    filter = "filter"
+    add_to_cart = "add_to_cart"
+    remove_from_cart = "remove_from_cart"
+    order_created = "order_created"
+    payment_success = "payment_success"
+    complaint_created = "complaint_created"
+
