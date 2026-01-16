@@ -16,7 +16,7 @@ from app.services.store_service import (
     get_store_inventory,
     set_store_hours,
 )
-
+from app.models.models import Store
 from app.schema.schemas import (
     StoreCreate,
     StoreOut,
@@ -25,6 +25,7 @@ from app.schema.schemas import (
     GlobalStockUpdate,
     StoreInventoryOut,
     InventoryUpdate,
+
 )
 
 router = APIRouter(prefix="/stores", tags=["Stores"])
@@ -135,3 +136,4 @@ async def update_global_stock_api(
         total_stock=payload.total_stock,
     )
     return {"status": "updated"}
+

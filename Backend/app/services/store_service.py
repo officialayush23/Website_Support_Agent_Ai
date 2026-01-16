@@ -249,3 +249,23 @@ async def update_global_stock(
     gi.total_stock = total_stock
     await db.commit()
     return gi
+
+# =====================================================
+# GET STORE HOURS (UI / ADMIN / AI)
+# =====================================================
+
+async def get_store_hours(
+    db: AsyncSession,
+    store_id: UUID,
+):
+    store = await db.get(Store, store_id)
+    if not store:
+        not_found("Store")
+
+    res = await db.execute(
+        select(StoreWorkingHour)
+        .where(StoreWorkingHour.store_id == store_id)
+        .order_by(StoreWorkingHour.day_of_week)
+    )
+
+    return res.scalars().all()

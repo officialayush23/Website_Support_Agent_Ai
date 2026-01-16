@@ -1,5 +1,5 @@
 # app/services/payment_service.py
-# app/services/payment_service.py
+from app.schema.enums import PaymentStatus
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import uuid4, UUID
 from sqlalchemy import select
@@ -40,7 +40,7 @@ async def process_dummy_payment(
         id=uuid4(),
         order_id=order_id,
         provider=provider,
-        status="success",
+        status=PaymentStatus.success.value,
         amount=order.total,
     )
 

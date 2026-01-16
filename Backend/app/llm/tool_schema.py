@@ -1,9 +1,10 @@
 # app/llm/tool_schema.py
+# app/llm/tool_schema.py
 from google.genai.types import FunctionDeclaration, Schema, Type
 
 TOOLS = [
 
-    # ---------- PRODUCTS ----------
+    # ===== PRODUCTS =====
     FunctionDeclaration(
         name="list_products",
         description="List all active products",
@@ -12,7 +13,7 @@ TOOLS = [
 
     FunctionDeclaration(
         name="view_product",
-        description="View a product by ID",
+        description="View product details",
         parameters=Schema(
             type=Type.OBJECT,
             properties={"product_id": Schema(type=Type.STRING)},
@@ -26,46 +27,92 @@ TOOLS = [
         parameters=Schema(type=Type.OBJECT, properties={}, required=[]),
     ),
 
-    # ---------- CART ----------
+    # ===== CART =====
+    FunctionDeclaration(
+        name="view_cart",
+        description="View cart with totals",
+        parameters=Schema(type=Type.OBJECT, properties={}, required=[]),
+    ),
+
     FunctionDeclaration(
         name="add_to_cart",
-        description="Add a product to cart",
+        description="Add variant to cart",
         parameters=Schema(
             type=Type.OBJECT,
             properties={
-                "product_id": Schema(type=Type.STRING),
+                "variant_id": Schema(type=Type.STRING),
                 "quantity": Schema(type=Type.INTEGER),
             },
-            required=["product_id", "quantity"],
+            required=["variant_id", "quantity"],
         ),
     ),
 
     FunctionDeclaration(
         name="remove_from_cart",
-        description="Remove a product from cart",
+        description="Remove variant from cart",
         parameters=Schema(
             type=Type.OBJECT,
-            properties={"product_id": Schema(type=Type.STRING)},
-            required=["product_id"],
+            properties={"variant_id": Schema(type=Type.STRING)},
+            required=["variant_id"],
+        ),
+    ),
+
+    # ===== ORDERS =====
+    FunctionDeclaration(
+        name="create_order",
+        description="Checkout cart",
+        parameters=Schema(
+            type=Type.OBJECT,
+            properties={
+                "address_id": Schema(type=Type.STRING),
+                "fulfillment_type": Schema(type=Type.STRING),
+                "store_id": Schema(type=Type.STRING),
+            },
+            required=["address_id"],
         ),
     ),
 
     FunctionDeclaration(
-        name="view_cart",
-        description="View current cart",
-        parameters=Schema(type=Type.OBJECT, properties={}, required=[]),
+        name="cancel_order",
+        description="Cancel order",
+        parameters=Schema(
+            type=Type.OBJECT,
+            properties={"order_id": Schema(type=Type.STRING)},
+            required=["order_id"],
+        ),
     ),
 
-    # ---------- ADDRESSES ----------
+    FunctionDeclaration(
+        name="order_timeline",
+        description="Order timeline",
+        parameters=Schema(
+            type=Type.OBJECT,
+            properties={"order_id": Schema(type=Type.STRING)},
+            required=["order_id"],
+        ),
+    ),
+
+    # ===== DELIVERY =====
+    FunctionDeclaration(
+        name="get_delivery_status",
+        description="Get delivery status",
+        parameters=Schema(
+            type=Type.OBJECT,
+            properties={"order_id": Schema(type=Type.STRING)},
+            required=["order_id"],
+        ),
+    ),
+
+    # ===== ADDRESSES =====
     FunctionDeclaration(
         name="list_addresses",
-        description="List user addresses",
+        description="List addresses",
         parameters=Schema(type=Type.OBJECT, properties={}, required=[]),
     ),
 
     FunctionDeclaration(
         name="add_address",
-        description="Add an address",
+        description="Add address",
         parameters=Schema(
             type=Type.OBJECT,
             properties={"data": Schema(type=Type.OBJECT)},
@@ -75,7 +122,7 @@ TOOLS = [
 
     FunctionDeclaration(
         name="delete_address",
-        description="Delete an address",
+        description="Delete address",
         parameters=Schema(
             type=Type.OBJECT,
             properties={"address_id": Schema(type=Type.STRING)},
@@ -93,28 +140,7 @@ TOOLS = [
         ),
     ),
 
-    # ---------- ORDERS ----------
-    FunctionDeclaration(
-        name="create_order",
-        description="Create order from cart",
-        parameters=Schema(
-            type=Type.OBJECT,
-            properties={"address_id": Schema(type=Type.STRING)},
-            required=["address_id"],
-        ),
-    ),
-
-    FunctionDeclaration(
-        name="get_delivery_status",
-        description="Get delivery status for an order",
-        parameters=Schema(
-            type=Type.OBJECT,
-            properties={"order_id": Schema(type=Type.STRING)},
-            required=["order_id"],
-        ),
-    ),
-
-    # ---------- COMPLAINTS ----------
+    # ===== COMPLAINTS =====
     FunctionDeclaration(
         name="raise_complaint",
         description="Raise complaint",
@@ -128,17 +154,7 @@ TOOLS = [
         ),
     ),
 
-    FunctionDeclaration(
-        name="complaint_status",
-        description="Get complaint status",
-        parameters=Schema(
-            type=Type.OBJECT,
-            properties={"complaint_id": Schema(type=Type.STRING)},
-            required=["complaint_id"],
-        ),
-    ),
-
-    # ---------- REFUNDS ----------
+    # ===== REFUNDS =====
     FunctionDeclaration(
         name="request_refund",
         description="Request refund",
@@ -152,17 +168,7 @@ TOOLS = [
         ),
     ),
 
-    FunctionDeclaration(
-        name="refund_status",
-        description="Get refund status",
-        parameters=Schema(
-            type=Type.OBJECT,
-            properties={"refund_id": Schema(type=Type.STRING)},
-            required=["refund_id"],
-        ),
-    ),
-
-    # ---------- USER PREFERENCES ----------
+    # ===== USER =====
     FunctionDeclaration(
         name="get_user_preferences",
         description="Get user preferences",
@@ -170,12 +176,12 @@ TOOLS = [
     ),
 
     FunctionDeclaration(
-        name="update_user_preferences",
-        description="Update explicit user preferences",
+        name="update_user_profile",
+        description="Update user name",
         parameters=Schema(
             type=Type.OBJECT,
-            properties={"prefs": Schema(type=Type.OBJECT)},
-            required=["prefs"],
+            properties={"name": Schema(type=Type.STRING)},
+            required=[],
         ),
     ),
 ]

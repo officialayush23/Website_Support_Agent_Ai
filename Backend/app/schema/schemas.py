@@ -247,6 +247,7 @@ class RefundCreate(BaseModel):
 class RefundOut(BaseModel):
     id: UUID
     order_id: UUID
+    reason: str
     status: RefundStatus
     created_at: datetime
 
@@ -267,8 +268,6 @@ class MessageOut(BaseModel):
         from_attributes = True
 
 class MessageCreate(BaseModel):
-    conversation_id: UUID
-    role: MessageRole
     content: str
 
 
@@ -313,3 +312,78 @@ class StoreInventoryOut(BaseModel):
     store_id: UUID
     store_name: str
     items: list[dict]
+# ================= PAYMENTS =================
+
+class PaymentCreate(BaseModel):
+    order_id: UUID
+    provider: str = "dummy"
+
+
+class PaymentOut(BaseModel):
+    id: UUID
+    order_id: UUID
+    provider: str
+    status: PaymentStatus
+    amount: float
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ================= REFUNDS (ADMIN EXTENDED) =================
+
+class RefundStatusUpdate(BaseModel):
+    status: RefundStatus
+
+
+class RefundAdminOut(BaseModel):
+    id: UUID
+    order_id: UUID
+    reason: str
+    status: RefundStatus
+    amount: float
+    created_at: datetime
+
+class OfferUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+
+    min_cart_value: Optional[float] = None
+    percentage_off: Optional[float] = None
+    amount_off: Optional[float] = None
+    max_discount: Optional[float] = None
+
+    priority: Optional[int] = None
+    stackable: Optional[bool] = None
+
+    starts_at: Optional[datetime] = None
+    ends_at: Optional[datetime] = None
+    is_active: Optional[bool] = None
+class DeliveryAdminOut(BaseModel):
+    id: UUID
+    order_id: UUID
+    user_id: UUID
+    address_id: UUID | None
+
+    status: DeliveryStatus
+    eta: Optional[datetime]
+
+    created_at: datetime
+    updated_at: Optional[datetime]
+
+    class Config:
+        from_attributes = True
+class DeliveryCreate(BaseModel):
+    order_id: UUID
+
+
+class DeliveryUpdate(BaseModel):
+    status: DeliveryStatus
+    eta: Optional[datetime] = None
+class ComplaintUpdate(BaseModel):
+    status: ComplaintStatus
+
+class UserUpdate(BaseModel):
+    name: Optional[str] = None
+

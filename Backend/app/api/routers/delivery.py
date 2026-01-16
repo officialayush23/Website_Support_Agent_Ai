@@ -48,13 +48,12 @@ async def update(
         forbidden()
 
     return await update_delivery(
-        db=db,
-        delivery_id=delivery_id,
-        new_status=payload.status,
-        courier=payload.courier,
-        tracking_id=payload.tracking_id,
-        eta=payload.eta,
-    )
+    db=db,
+    delivery_id=delivery_id,
+    new_status=payload.status,
+    eta=payload.eta,
+)
+
 
 
 @router.get("/order/{order_id}", response_model=DeliveryOut)

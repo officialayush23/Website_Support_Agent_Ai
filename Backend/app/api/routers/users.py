@@ -98,3 +98,4 @@ async def my_preferences(
     user=Depends(get_current_user),
 ):
     return await get_user_preferences(db, user["user_id"])
+

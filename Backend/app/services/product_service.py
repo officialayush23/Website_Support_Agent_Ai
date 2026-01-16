@@ -197,3 +197,47 @@ async def create_variant(
 
     await embed_variant(db, variant.id)
     return variant
+
+
+async def get_product_full(
+    db: AsyncSession,
+    *,
+    product_id: UUID,
+):
+    res = await db.execute(
+        select(Product)
+        .where(Product.id == product_id, Product.is_active.is_(True))
+        .options(
+            selectinload(Product.variants)
+            .selectinload(ProductVariant.images)
+        )
+    )
+
+    product = res.scalar_one_or_none()
+    if not product:
+        not_found("Product")
+
+    return {
+        "id": product.id,
+        "name": product.name,
+        "description": product.description,
+        "category": product.category,
+        "variants": [
+            {
+                "id": v.id,
+                "sku": v.sku,
+                "price": float(v.price),
+                "attributes": v.attributes,
+                "images": [
+                    {
+                        "id": img.id,
+                        "url": img.image_url,
+                        "is_primary": img.is_primary,
+                    }
+                    for img in v.images
+                ],
+            }
+            for v in product.variants
+        ],
+    }
+

@@ -8,7 +8,6 @@ from decimal import Decimal
 from app.models.models import Complaint, AgentAction
 from app.models.enums import (
     agent_action_status_enum,
-    complaint_created_by_enum,
 )
 from app.schema.enums import ComplaintStatus
 from app.utils.api_error import not_found, bad_request
@@ -35,7 +34,7 @@ async def create(
         order_id=order_id,
         description=desc,
         status=ComplaintStatus.open.value,
-        created_by=complaint_created_by_enum.user,
+        created_by="user",
     )
 
     db.add(complaint)

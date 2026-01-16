@@ -40,7 +40,7 @@ async def record_event(
         product_id=product_id,
         variant_id=variant_id,
         order_id=order_id,
-        metadata=metadata or {},
+        event_metadata=metadata or {},
     )
 
     db.add(event)

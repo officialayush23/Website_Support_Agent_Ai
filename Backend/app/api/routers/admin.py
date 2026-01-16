@@ -117,7 +117,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
-
+from sqlalchemy import select, func
 from app.core.database import get_db
 from app.core.auth import get_current_user
 from app.services.product_service import (
@@ -125,6 +125,7 @@ from app.services.product_service import (
     update_product,
     delete_product,
 )
+from app.models.models import Order
 from app.services.store_service import update_global_stock
 from app.schema.schemas import ProductCreate, ProductUpdate, GlobalStockUpdate
 from app.utils.api_error import forbidden
@@ -188,3 +189,26 @@ async def set_global_stock(
         total_stock=payload.total_stock,
     )
     return {"status": "updated"}
+
+
+@router.get("/admin/summary")
+async def kpi_summary(
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    if user["role"] != "admin":
+        forbidden()
+
+    res = await db.execute(
+        select(
+            func.count(Order.id),
+            func.sum(Order.total),
+        )
+    )
+
+    orders, revenue = res.first()
+
+    return {
+        "total_orders": orders or 0,
+        "total_revenue": float(revenue or 0),
+    }

@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 from sqlalchemy.orm import selectinload
 
-from app.models.models import Order, OrderItem, Cart, CartItem
+from app.models.models import AgentAction, Complaint, Delivery, Order, OrderItem, Cart, CartItem, Payment, Pickup, Refund
 from app.schema.enums import OrderStatus
 from app.services.inventory_service import release_inventory_for_order
 from app.utils.api_error import bad_request, not_found
@@ -66,3 +66,92 @@ async def cancel_order(
 
     await db.commit()
     return {"status": "cancelled"}
+
+
+async def get_order_detail(
+    db: AsyncSession,
+    *,
+    order_id: UUID,
+    user_id: UUID,
+):
+    res = await db.execute(
+        select(Order)
+        .where(Order.id == order_id, Order.user_id == user_id)
+        .options(
+            selectinload(Order.items)
+            .selectinload(OrderItem.variant),
+            selectinload(Order.store),
+        )
+    )
+
+    order = res.scalar_one_or_none()
+    if not order:
+        not_found("Order")
+
+    return {
+        "id": order.id,
+        "status": order.status,
+        "fulfillment_type": order.fulfillment_type,
+        "store": (
+            {
+                "id": order.store.id,
+                "name": order.store.name,
+                "city": order.store.city,
+            }
+            if order.store
+            else None
+        ),
+        "subtotal": float(order.subtotal),
+        "discount_total": float(order.discount_total),
+        "total": float(order.total),
+        "items": [
+            {
+                "variant_id": i.variant_id,
+                "quantity": i.quantity,
+                "price": float(i.price),
+            }
+            for i in order.items
+        ],
+        "created_at": order.created_at,
+    }
+
+async def get_order_timeline(db: AsyncSession, *, order_id: UUID, user_id: UUID):
+    order = await db.get(Order, order_id)
+    if not order or order.user_id != user_id:
+        not_found("Order")
+
+    payments = await db.execute(
+        select(Payment).where(Payment.order_id == order_id)
+    )
+
+    delivery = await db.execute(
+        select(Delivery).where(Delivery.order_id == order_id)
+    )
+
+    pickup = await db.execute(
+        select(Pickup).where(Pickup.order_id == order_id)
+    )
+
+    refunds = await db.execute(
+        select(Refund).where(Refund.order_id == order_id)
+    )
+
+    complaints = await db.execute(
+        select(Complaint).where(Complaint.order_id == order_id)
+    )
+
+    actions = await db.execute(
+        select(AgentAction)
+        .where(AgentAction.payload["order_id"].astext == str(order_id))
+        .order_by(AgentAction.created_at)
+    )
+
+    return {
+        "order": order,
+        "payments": payments.scalars().all(),
+        "delivery": delivery.scalar_one_or_none(),
+        "pickup": pickup.scalar_one_or_none(),
+        "refunds": refunds.scalars().all(),
+        "complaints": complaints.scalars().all(),
+        "agent_actions": actions.scalars().all(),
+    }

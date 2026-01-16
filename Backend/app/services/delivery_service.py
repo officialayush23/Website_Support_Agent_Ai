@@ -129,3 +129,12 @@ async def get_delivery_for_order(
         not_found("Delivery")
 
     return delivery
+
+
+async def list_deliveries_admin(db: AsyncSession):
+    res = await db.execute(
+        select(Delivery)
+        .options(selectinload(Delivery.order))
+        .order_by(Delivery.created_at.desc())
+    )
+    return res.scalars().all()

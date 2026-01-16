@@ -50,7 +50,7 @@ async def admin_update_refund(
     refund = await update_status(
         db=db,
         refund_id=refund_id,
-        new_status=payload.status.value,  # 🔥 IMPORTANT
+        new_status=payload.status,  # 🔥 IMPORTANT
         actor=user["role"],
         confidence=0.95,
     )

@@ -28,6 +28,7 @@ from app.schema.enums import (
     FulfillmentType,
     FulfillmentSource,
     PickupStatus,
+    UserEventType,
 )
 
 from app.models.enums import user_event_type_enum
@@ -332,6 +333,9 @@ async def checkout(
 
 
     total = max(subtotal - discount_total, 0)
+   
+
+
 
     # ---------------- CREATE ORDER ----------------
     order = Order(
@@ -349,6 +353,13 @@ async def checkout(
     )
     db.add(order)
     await db.flush()
+    await record_event(
+    db=db,
+    user_id=user_id,
+    event_type=UserEventType.checkout_started.value,
+)
+
+
 
     # ---------------- INVENTORY LOCK ----------------
     for item in items:
