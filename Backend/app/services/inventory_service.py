@@ -1,13 +1,14 @@
 # app/services/inventory_service.py
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from uuid import UUID
-
+from sqlalchemy.orm import selectinload
 from app.models.models import (
     Order,
     OrderItem,
     GlobalInventory,
-    Inventory,
+    StoreInventory,
 )
 from app.utils.api_error import not_found
 
@@ -16,45 +17,34 @@ async def release_inventory_for_order(
     db: AsyncSession,
     order_id: UUID,
 ):
-    order = await db.execute(
+    res = await db.execute(
         select(Order)
         .where(Order.id == order_id)
-        .options(
-            selectinload(Order.items)
-        )
+        .options(selectinload(Order.items))
     )
-    order = order.scalar_one_or_none()
+    order = res.scalar_one_or_none()
     if not order:
         not_found("Order")
 
-    # DELIVERY → global inventory
-    if order.fulfillment_type == "delivery":
-        for item in order.items:
-            gi = await db.get(GlobalInventory, item.product_id)
-            if gi:
-                gi.reserved_stock = max(
-                    0,
-                    gi.reserved_stock - item.quantity
-                )
+    for item in order.items:
+        # 🔥 GLOBAL INVENTORY ALWAYS
+        gi = await db.get(GlobalInventory, item.variant_id)
+        if gi:
+            gi.reserved_stock = max(
+                0,
+                gi.reserved_stock - item.quantity,
+            )
 
-    # PICKUP → store inventory + global
-    if order.fulfillment_type == "pickup" and order.store_id:
-        for item in order.items:
+        # 🔥 PICKUP → RESTORE STORE INVENTORY
+        if order.fulfillment_type == "pickup" and order.store_id:
             inv = await db.get(
-                Inventory,
+                StoreInventory,
                 {
                     "store_id": order.store_id,
-                    "product_id": item.product_id,
+                    "variant_id": item.variant_id,
                 }
             )
             if inv:
-                inv.stock += item.quantity
-
-            gi = await db.get(GlobalInventory, item.product_id)
-            if gi:
-                gi.reserved_stock = max(
-                    0,
-                    gi.reserved_stock - item.quantity
-                )
+                inv.in_hand_stock += item.quantity
 
     await db.commit()

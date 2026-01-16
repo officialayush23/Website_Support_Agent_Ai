@@ -108,3 +108,12 @@ async def list_complaints(db: AsyncSession):
         .order_by(Complaint.created_at.desc())
     )
     return res.scalars().all()
+
+
+async def list_complaints_with_order(db: AsyncSession):
+    res = await db.execute(
+        select(Complaint)
+        .options(selectinload(Complaint.order))
+        .order_by(Complaint.created_at.desc())
+    )
+    return res.scalars().all()

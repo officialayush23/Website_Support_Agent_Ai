@@ -1,39 +1,28 @@
+# app/schema/schemas.py
 from pydantic import BaseModel, Field, model_validator
-from typing import Optional, List, Dict, Any, Literal
+from typing import Optional, List, Dict, Any
 from uuid import UUID
 from datetime import datetime, time
 
-from app.schema.enums import (
-    ConversationStatus,
-    EmbeddingSourceType,
-    OrderStatus,
-    ComplaintStatus,
-    PaymentStatus,
-    MessageRole,
-    RefundStatus,
-    DeliveryStatus,
-)
+from app.schema.enums import *
+from app.models.enums import (
+    user_role_enum,)
 
-# =========================
-# USER
-# =========================
+# ================= USERS =================
+
+
 
 class UserOut(BaseModel):
     id: UUID
     name: Optional[str]
-    role: str
+    role: str # OK to keep string IF auth layer already normalizes
+
 
     class Config:
         from_attributes = True
 
 
-class UserUpdate(BaseModel):
-    name: Optional[str] = None
-
-
-# =========================
-# ADDRESS
-# =========================
+# ================= ADDRESSES =================
 
 class AddressCreate(BaseModel):
     label: str
@@ -54,9 +43,7 @@ class AddressOut(AddressCreate):
         from_attributes = True
 
 
-# =========================
-# STORE & HOURS
-# =========================
+# ================= STORES =================
 
 class StoreHourCreate(BaseModel):
     day_of_week: int = Field(ge=0, le=6)
@@ -88,168 +75,119 @@ class StoreOut(StoreCreate):
         from_attributes = True
 
 
-# =========================
-# PRODUCT
-# =========================
+# ================= PRODUCTS =================
 
-class ProductImageOut(BaseModel):
-    id: UUID
-    image_url: str
-    is_primary: bool
-
-    class Config:
-        from_attributes = True
-
-
-class ProductCreate(BaseModel):
-    name: str
-    description: Optional[str] = None
-    category: Optional[str] = None
+class ProductVariantCreate(BaseModel):
+    product_id: UUID
+    sku: str
     price: float
     attributes: Optional[Dict[str, Any]] = None
 
 
-class ProductUpdate(BaseModel):
-    name: Optional[str]
-    description: Optional[str]
-    category: Optional[str]
-    price: Optional[float]
+class ProductVariantOut(BaseModel):
+    id: UUID
+    sku: Optional[str]
+    price: float
     attributes: Optional[Dict[str, Any]]
-    is_active: Optional[bool]
+
+    class Config:
+        from_attributes = True
 
 
 class ProductOut(BaseModel):
     id: UUID
     name: str
-    price: float
     category: Optional[str]
     description: Optional[str]
-    images: List[ProductImageOut] = Field(default_factory=list)
+    variants: List[ProductVariantOut] = []
 
     class Config:
         from_attributes = True
 
-# =========================
-# OFFER
-# =========================
 
-class OfferCreate(BaseModel):
-    title: str
-    description: Optional[str] = None
-    rules: Dict[str, Any]
-    priority: int = 0
-    stackable: bool = False
-    starts_at: datetime
-    ends_at: datetime
-    is_active: bool = True
+# ================= CART =================
 
-    @model_validator(mode="after")
-    def validate_dates(self):
-        if self.starts_at >= self.ends_at:
-            raise ValueError("starts_at must be before ends_at")
-        return self
+class CartItemCreate(BaseModel):
+    variant_id: UUID
+    quantity: int = Field(gt=0)
 
 
-class OfferUpdate(BaseModel):
-    title: Optional[str] = None
-    description: Optional[str] = None
-    rules: Optional[Dict[str, Any]] = None
-    priority: Optional[int] = None
-    stackable: Optional[bool] = None
-    starts_at: Optional[datetime] = None
-    ends_at: Optional[datetime] = None
-    is_active: Optional[bool] = None
-
-    @model_validator(mode="after")
-    def validate_dates(self):
-        if self.starts_at and self.ends_at and self.starts_at >= self.ends_at:
-            raise ValueError("starts_at must be before ends_at")
-        return self
+class CartItemUpdate(BaseModel):
+    quantity: int = Field(ge=0)
 
 
-class OfferOut(BaseModel):
+class CartItemOut(BaseModel):
+    variant_id: UUID
+    quantity: int
+
+    class Config:
+        from_attributes = True
+
+class CartOut(BaseModel):
     id: UUID
-    title: str
-    description: Optional[str]
-    rules: Dict[str, Any]
-    priority: int
-    stackable: bool
-    starts_at: datetime
-    ends_at: datetime
-    is_active: bool
-
-    class Config:
-        from_attributes = True
-
-
-# =========================
-# INVENTORY
-# =========================
-
-class InventoryUpdate(BaseModel):
-    store_id: UUID
-    product_id: UUID
-    stock: int = Field(ge=0)
-
-
-class InventoryOut(BaseModel):
-    store_id: UUID
-    product_id: UUID
-    stock: int
+    user_id: UUID
+    items: List[CartItemOut]
     updated_at: datetime
 
     class Config:
         from_attributes = True
 
+# ================= OFFERS =================
 
-# =========================
-# CART
-# =========================
+class OfferCreate(BaseModel):
+    title: str
+    description: Optional[str] = None
 
-class CartItemCreate(BaseModel):
-    product_id: UUID
-    quantity: int = Field(gt=0)
+    min_cart_value: float = 0
+    percentage_off: Optional[float] = None
+    amount_off: Optional[float] = None
+    max_discount: Optional[float] = None
+
+    priority: int = 0
+    stackable: bool = False
+
+    starts_at: datetime
+    ends_at: datetime
+    is_active: bool = True
+
+    @model_validator(mode="after")
+    def validate_discount(self):
+        if not self.percentage_off and not self.amount_off:
+            raise ValueError("Either percentage_off or amount_off required")
+        return self
 
 
-class CartItemUpdate(BaseModel):
-    quantity: int = Field(
-        ge=0,
-        description="Set to 0 to remove item from cart"
-    )
-
-
-class CartItemOut(BaseModel):
-    product_id: UUID
-    quantity: int
+class OfferOut(OfferCreate):
+    id: UUID
+    created_at: datetime
 
     class Config:
         from_attributes = True
 
 
-# =========================
-# ORDER / CHECKOUT
-# =========================
-
-class OrderCreate(BaseModel):
-    address_id: UUID
-
+# ================= CHECKOUT / ORDERS =================
 
 class CheckoutCreate(BaseModel):
-    address_id: UUID
-    payment_provider: str = "dummy"
-    fulfillment_type: Literal["delivery", "pickup"] = "delivery"
+    address_id: Optional[UUID] = None
+    fulfillment_type: FulfillmentType = FulfillmentType.delivery
     store_id: Optional[UUID] = None
+    payment_provider: str = "dummy"
 
 
 class OrderItemOut(BaseModel):
-    product_id: UUID
+    variant_id: UUID
     quantity: int
     price: float
+    fulfillment_source: FulfillmentSource
 
 
 class OrderOut(BaseModel):
     id: UUID
     status: OrderStatus
+    fulfillment_type: FulfillmentType
+    store_id: Optional[UUID]
+    subtotal: float
+    discount_total: float
     total: float
     created_at: datetime
     items: List[OrderItemOut]
@@ -258,131 +196,36 @@ class OrderOut(BaseModel):
         from_attributes = True
 
 
-# =========================
-# PAYMENT
-# =========================
-
-class PaymentCreate(BaseModel):
-    order_id: UUID
-    provider: str = "dummy"
-
-
-class PaymentOut(BaseModel):
-    id: UUID
-    order_id: UUID
-    provider: str
-    status: PaymentStatus
-    amount: float
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
-# =========================
-# DELIVERY
-# =========================
-
-class DeliveryCreate(BaseModel):
-    order_id: UUID
-    courier: Optional[str] = None
-    tracking_id: Optional[str] = None
-    eta: Optional[datetime] = None
-
-
-class DeliveryUpdate(BaseModel):
-    status: DeliveryStatus
-    courier: Optional[str] = None
-    tracking_id: Optional[str] = None
-    eta: Optional[datetime] = None
-
+# ================= DELIVERY / PICKUP =================
 
 class DeliveryOut(BaseModel):
     id: UUID
     order_id: UUID
     status: DeliveryStatus
-    courier: Optional[str]
-    tracking_id: Optional[str]
     eta: Optional[datetime]
     created_at: datetime
 
     class Config:
         from_attributes = True
-
-
-# =========================
-# REFUND
-# =========================
-
-class RefundCreate(BaseModel):
-    order_id: UUID
-    reason: str
-
-
-class RefundStatusUpdate(BaseModel):
-    status: RefundStatus
-
-
-class RefundOut(BaseModel):
+class PickupOut(BaseModel):
     id: UUID
     order_id: UUID
-    status: RefundStatus
+    store_id: UUID
+    user_id: UUID
+    amount: float
+    status: PickupStatus
+    picked_up_at: Optional[datetime]
     created_at: datetime
 
     class Config:
         from_attributes = True
 
 
-class RefundAdminOut(BaseModel):
-    id: UUID
-    order_id: UUID
-    reason: Optional[str]
-    status: RefundStatus
-    created_at: datetime
-    amount: Optional[float]
-
-    class Config:
-        from_attributes = True
-
-
-# =========================
-# CONVERSATION / MESSAGE
-# =========================
-
-class ConversationOut(BaseModel):
-    id: UUID
-    status: ConversationStatus
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
-class MessageCreate(BaseModel):
-    content: str
-
-
-class MessageOut(BaseModel):
-    id: UUID
-    role: MessageRole
-    content: str
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
-# =========================
-# COMPLAINT
-# =========================
+# ================= COMPLAINTS / REFUNDS =================
 
 class ComplaintCreate(BaseModel):
     order_id: UUID
     description: str
-
-
-class ComplaintUpdate(BaseModel):
-    status: ComplaintStatus
 
 
 class ComplaintOut(BaseModel):
@@ -396,73 +239,77 @@ class ComplaintOut(BaseModel):
         from_attributes = True
 
 
-# =========================
-# EMBEDDING
-# =========================
-
-class EmbeddingCreate(BaseModel):
-    source_type: EmbeddingSourceType
-    source_id: UUID
-    metadata: Optional[Dict[str, Any]] = None
+class RefundCreate(BaseModel):
+    order_id: UUID
+    reason: str
 
 
-class EmbeddingOut(BaseModel):
+class RefundOut(BaseModel):
     id: UUID
-    source_type: EmbeddingSourceType
-    source_id: UUID
+    order_id: UUID
+    status: RefundStatus
     created_at: datetime
 
     class Config:
         from_attributes = True
 
 
+# ================= CHAT =================
 
-class OrderStatusUpdate(BaseModel):
-    status: OrderStatus
+class MessageOut(BaseModel):
+    id: UUID
+    conversation_id: UUID
+    role: MessageRole
+    content: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class MessageCreate(BaseModel):
+    conversation_id: UUID
+    role: MessageRole
+    content: str
 
 
-class StoreInventoryItem(BaseModel):
-    product_id: UUID
-    product_name: str
-    stock: int
+class ConversationOut(BaseModel):
+    id: UUID
+    status: str
+    handled_by: str
+    created_at: str
+    last_message_at: str | None = None
+
+
+
+# ================= ADMIN: PRODUCTS =================
+
+class ProductCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    category: Optional[str] = None
+
+
+class ProductUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+# ================= INVENTORY =================
+
+class GlobalStockUpdate(BaseModel):
+    variant_id: UUID
+    total_stock: int = Field(ge=0)
+
+
+class InventoryUpdate(BaseModel):
+    store_id: UUID
+    variant_id: UUID
+    allocated_stock: int = Field(ge=0)
 
 
 class StoreInventoryOut(BaseModel):
     store_id: UUID
     store_name: str
-    items: List[StoreInventoryItem]
-
-
-class DeliveryAdminProduct(BaseModel):
-    product_id: UUID
-    name: str
-    quantity: int
-    price: float
-
-
-class DeliveryAdminOut(BaseModel):
-    delivery_id: UUID
-    status: DeliveryStatus
-    courier: Optional[str]
-    tracking_id: Optional[str]
-
-    order_id: UUID
-    user_id: UUID
-    total: float
-
-    products: List[DeliveryAdminProduct]
-
-    class Config:
-        from_attributes = True
-class AdminCatalogItem(BaseModel):
-    product_id: UUID
-    name: str
-    price: float
-    total_stock: int
-    reserved_stock: int
-
-class GlobalStockUpdate(BaseModel):
-    product_id: UUID
-    total_stock: int = Field(ge=0)
-class OrderCancel(BaseModel):
-    reason: Optional[str] = None
+    items: list[dict]

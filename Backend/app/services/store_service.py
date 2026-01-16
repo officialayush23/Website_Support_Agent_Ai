@@ -1,5 +1,4 @@
 # app/services/store_service.py
-
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text, select, delete, func
 from uuid import uuid4, UUID
@@ -7,24 +6,20 @@ from datetime import datetime
 
 from app.models.models import (
     Store,
-    Inventory,
-    Product,
+    StoreInventory,
     StoreWorkingHour,
     GlobalInventory,
+    ProductVariant,
 )
 from app.schema.schemas import StoreHourCreate
 from app.utils.api_error import not_found, bad_request
 
 
-# ---------------------------------------------------
-# STORES (RAW SQL – PostGIS SAFE)
-# ---------------------------------------------------
+# =====================================================
+# STORES (POSTGIS SAFE)
+# =====================================================
 
 async def list_stores(db: AsyncSession):
-    """
-    List active stores.
-    Uses RAW SQL to safely cast geography → geometry.
-    """
     stmt = text("""
         SELECT 
             id,
@@ -42,28 +37,16 @@ async def list_stores(db: AsyncSession):
 
 
 async def create_store(db: AsyncSession, data: dict):
-    """
-    Create store with geography point safely.
-    Expects latitude & longitude in payload.
-    """
     store_id = uuid4()
     lat = data.pop("latitude")
     lng = data.pop("longitude")
 
     stmt = text("""
         INSERT INTO stores (
-            id,
-            name,
-            city,
-            state,
-            location,
-            is_active
+            id, name, city, state, location, is_active
         )
         VALUES (
-            :id,
-            :name,
-            :city,
-            :state,
+            :id, :name, :city, :state,
             ST_SetSRID(ST_MakePoint(:lng, :lat), 4326),
             true
         )
@@ -77,25 +60,22 @@ async def create_store(db: AsyncSession, data: dict):
             is_active
     """)
 
-    res = await db.execute(
-        stmt,
-        {
-            "id": store_id,
-            "name": data["name"],
-            "city": data["city"],
-            "state": data["state"],
-            "lat": lat,
-            "lng": lng,
-        },
-    )
+    res = await db.execute(stmt, {
+        "id": store_id,
+        "name": data["name"],
+        "city": data["city"],
+        "state": data["state"],
+        "lat": lat,
+        "lng": lng,
+    })
 
     await db.commit()
     return res.mappings().first()
 
 
-# ---------------------------------------------------
+# =====================================================
 # STORE HOURS
-# ---------------------------------------------------
+# =====================================================
 
 async def set_store_hours(
     db: AsyncSession,
@@ -121,7 +101,7 @@ async def set_store_hours(
 
 async def is_store_open_now(db: AsyncSession, store_id: UUID) -> bool:
     now = datetime.utcnow()
-    day = now.weekday()  # Monday = 0
+    day = now.weekday()
 
     res = await db.execute(
         select(StoreWorkingHour)
@@ -136,57 +116,59 @@ async def is_store_open_now(db: AsyncSession, store_id: UUID) -> bool:
     return res.scalar_one_or_none() is not None
 
 
-# ---------------------------------------------------
-# INVENTORY (GLOBAL + STORE-LEVEL – SAFE LOGIC)
-# ---------------------------------------------------
+# =====================================================
+# INVENTORY (CORRECT MODEL)
+# =====================================================
 
-async def update_stock(
+async def update_store_inventory(
     db: AsyncSession,
+    *,
     store_id: UUID,
-    product_id: UUID,
-    stock: int,
+    variant_id: UUID,
+    allocated_stock: int,
 ):
-    """
-    Update store inventory while respecting global stock.
-    """
-    gi = await db.get(GlobalInventory, product_id)
+    gi = await db.get(GlobalInventory, variant_id)
     if not gi:
         not_found("Global inventory")
 
-    existing = await db.get(
-        Inventory,
-        {"store_id": store_id, "product_id": product_id},
-    )
+    if allocated_stock < 0:
+        bad_request("Invalid stock")
 
-    # Sum stock elsewhere
+    # total allocated across all stores
     res = await db.execute(
-        select(func.coalesce(func.sum(Inventory.stock), 0))
+        select(func.coalesce(func.sum(StoreInventory.allocated_stock), 0))
         .where(
-            Inventory.product_id == product_id,
-            Inventory.store_id != store_id,
+            StoreInventory.variant_id == variant_id,
+            StoreInventory.store_id != store_id,
         )
     )
     allocated_elsewhere = res.scalar()
 
-    new_reserved = allocated_elsewhere + stock
-    if new_reserved > gi.total_stock:
-        bad_request("Not enough global stock")
+    if allocated_elsewhere + allocated_stock > gi.total_stock:
+        bad_request("Exceeds global stock")
 
-    if existing:
-        existing.stock = stock
+    inv = await db.get(
+        StoreInventory,
+        {"store_id": store_id, "variant_id": variant_id},
+    )
+
+    if inv:
+        inv.allocated_stock = allocated_stock
+        inv.in_hand_stock = allocated_stock
     else:
-        existing = Inventory(
+        inv = StoreInventory(
             store_id=store_id,
-            product_id=product_id,
-            stock=stock,
+            variant_id=variant_id,
+            allocated_stock=allocated_stock,
+            in_hand_stock=allocated_stock,
         )
-        db.add(existing)
+        db.add(inv)
 
-    gi.reserved_stock = new_reserved
+    gi.allocated_stock = allocated_elsewhere + allocated_stock
 
     await db.commit()
-    await db.refresh(existing)
-    return existing
+    await db.refresh(inv)
+    return inv
 
 
 async def get_store_inventory(db: AsyncSession, store_id: UUID):
@@ -195,71 +177,74 @@ async def get_store_inventory(db: AsyncSession, store_id: UUID):
         not_found("Store")
 
     res = await db.execute(
-        select(Inventory, Product)
-        .join(Product, Product.id == Inventory.product_id)
-        .where(Inventory.store_id == store_id)
+        select(StoreInventory, ProductVariant)
+        .join(ProductVariant, ProductVariant.id == StoreInventory.variant_id)
+        .where(StoreInventory.store_id == store_id)
     )
-
-    items = [
-        {
-            "product_id": p.id,
-            "product_name": p.name,
-            "stock": inv.stock,
-        }
-        for inv, p in res.all()
-    ]
 
     return {
         "store_id": store.id,
         "store_name": store.name,
-        "items": items,
+        "items": [
+            {
+                "variant_id": v.id,
+                "sku": v.sku,
+                "price": float(v.price),
+                "allocated_stock": inv.allocated_stock,
+                "in_hand_stock": inv.in_hand_stock,
+            }
+            for inv, v in res.all()
+        ],
     }
 
 
-# ---------------------------------------------------
+# =====================================================
 # ADMIN CATALOG
-# ---------------------------------------------------
+# =====================================================
 
 async def admin_catalog(db: AsyncSession):
     res = await db.execute(
         select(
-            Product.id,
-            Product.name,
-            Product.price,
+            ProductVariant.id,
+            ProductVariant.sku,
+            ProductVariant.price,
             GlobalInventory.total_stock,
+            GlobalInventory.allocated_stock,
             GlobalInventory.reserved_stock,
         )
-        .join(GlobalInventory, GlobalInventory.product_id == Product.id)
-        .where(Product.is_active.is_(True))
+        .join(GlobalInventory, GlobalInventory.variant_id == ProductVariant.id)
     )
 
     return [
         {
-            "product_id": r.id,
-            "name": r.name,
+            "variant_id": r.id,
+            "sku": r.sku,
             "price": float(r.price),
             "total_stock": r.total_stock,
+            "allocated_stock": r.allocated_stock,
             "reserved_stock": r.reserved_stock,
+            "available_stock": r.total_stock - r.allocated_stock - r.reserved_stock,
         }
         for r in res
     ]
 
 
-# ---------------------------------------------------
+# =====================================================
 # GLOBAL STOCK
-# ---------------------------------------------------
+# =====================================================
 
 async def update_global_stock(
     db: AsyncSession,
-    product_id: UUID,
+    *,
+    variant_id: UUID,
     total_stock: int,
 ):
-    gi = await db.get(GlobalInventory, product_id)
+    gi = await db.get(GlobalInventory, variant_id)
     if not gi:
         not_found("Global inventory")
 
-    if total_stock < gi.reserved_stock:
-        bad_request("Cannot reduce below reserved stock")
+    if total_stock < gi.allocated_stock + gi.reserved_stock:
+        bad_request("Below allocated/reserved")
 
     gi.total_stock = total_stock
     await db.commit()

@@ -4,7 +4,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID, uuid4
 from sqlalchemy import select
 from datetime import datetime
-
+from sqlalchemy import desc
+from app.models.enums import message_role_enum
 from app.models.models import Conversation, Message
 from app.models.enums import (
     conversation_status_enum,
@@ -37,6 +38,8 @@ async def start_conversation(
 # =========================
 # ADD MESSAGE
 # =========================
+
+
 async def add_message(
     db: AsyncSession,
     conversation_id: UUID,
@@ -124,3 +127,58 @@ async def get_ai_handoffs(
 
     res = await db.execute(stmt)
     return res.scalars().all()
+
+# =========================
+async def get_or_create_active_conversation(
+    db: AsyncSession,
+    user_id: UUID,
+) -> Conversation:
+    res = await db.execute(
+        select(Conversation)
+        .where(
+            Conversation.user_id == user_id,
+            Conversation.status == conversation_status_enum.active,
+        )
+        .order_by(desc(Conversation.last_message_at))
+        .limit(1)
+    )
+
+    convo = res.scalar_one_or_none()
+    if convo:
+        return convo
+
+    convo = Conversation(
+        id=uuid4(),
+        user_id=user_id,
+        status="active",
+        handled_by="llm",
+    )
+    db.add(convo)
+    await db.commit()
+    await db.refresh(convo)
+    return convo
+
+
+# =========================
+# LOAD CONVERSATION HISTORY
+# =========================
+async def get_conversation_history(
+    db: AsyncSession,
+    conversation_id: UUID,
+    limit: int = 50,
+):
+    res = await db.execute(
+        select(Message)
+        .where(Message.conversation_id == conversation_id)
+        .order_by(Message.created_at.asc())
+        .limit(limit)
+    )
+
+    return [
+        {
+            "role": m.role,
+            "content": m.content,
+            "created_at": m.created_at,
+        }
+        for m in res.scalars()
+    ]

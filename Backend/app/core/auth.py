@@ -40,7 +40,6 @@ def get_current_user(
         "email": email,
         "role": app_role,  # 👈 THIS is what admin checks should use
     }
-
 async def get_user_from_ws(ws: WebSocket):
     token = None
 
@@ -52,8 +51,9 @@ async def get_user_from_ws(ws: WebSocket):
         token = ws.query_params.get("token")
 
     if not token:
+        print("❌ WS Error: No token provided in query params")
         await ws.close(code=1008)
-        raise HTTPException(401, "Missing token")
+        raise RuntimeError("Missing WS token")
 
     try:
         payload = jwt.decode(
@@ -61,13 +61,18 @@ async def get_user_from_ws(ws: WebSocket):
             settings.SUPABASE_JWT_SECRET,
             algorithms=["HS256"],
             audience="authenticated",
+            leeway=10,
         )
-    except jwt.PyJWTError:
+    except jwt.PyJWTError as e:
         await ws.close(code=1008)
-        raise HTTPException(401, "Invalid token")
+        raise RuntimeError("Invalid WS token")
 
     return {
         "user_id": payload["sub"],
         "email": payload.get("email"),
-        "role": payload.get("user_metadata", {}).get("role", "user"),
+        "role": (
+            payload.get("user_metadata", {}).get("role")
+            or payload.get("app_metadata", {}).get("role")
+            or "user"
+        ),
     }

@@ -11,6 +11,7 @@ from app.services.offer_service import (
     create_offer,
     update_offer,
     deactivate_offer,
+    preview_offers,
 )
 from app.schema.schemas import OfferCreate, OfferUpdate, OfferOut
 from app.utils.api_error import forbidden
@@ -18,10 +19,32 @@ from app.utils.api_error import forbidden
 router = APIRouter(prefix="/offers", tags=["Offers"])
 
 
+# =====================================================
+# PUBLIC
+# =====================================================
+
 @router.get("/", response_model=list[OfferOut])
 async def active(db: AsyncSession = Depends(get_db)):
     return await list_active_offers(db)
 
+
+@router.get("/preview")
+async def preview(
+    subtotal: float,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Used by:
+    - Cart page
+    - Checkout screen
+    - Chat assistant ("You save ₹X using OFFER_Y")
+    """
+    return await preview_offers(db=db, subtotal=subtotal)
+
+
+# =====================================================
+# ADMIN
+# =====================================================
 
 @router.get("/admin", response_model=list[OfferOut])
 async def admin_list(

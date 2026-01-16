@@ -1,19 +1,27 @@
 # app/schema/enums.py
-from enum import Enum
 
+from enum import Enum
 
 class OrderStatus(str, Enum):
     pending = "pending"
     paid = "paid"
     shipped = "shipped"
     delivered = "delivered"
+    completed = "completed"
+    cancelled = "cancelled"
+class PickupStatus(str, Enum):
+    ready = "ready"
+    picked_up = "picked_up"
     cancelled = "cancelled"
 
 
 class PaymentStatus(str, Enum):
     initiated = "initiated"
+    pending = "pending"
     success = "success"
     failed = "failed"
+    refunded = "refunded"
+
 
 
 class ComplaintStatus(str, Enum):
@@ -22,34 +30,16 @@ class ComplaintStatus(str, Enum):
     resolved = "resolved"
 
 
-class ConversationStatus(str, Enum):
-    active = "active"
-    closed = "closed"
-
-
-class MessageRole(str, Enum):
-    system = "system"
-    user = "user"
-    assistant = "assistant"
-
-
 class RefundStatus(str, Enum):
     initiated = "initiated"
     approved = "approved"
     rejected = "rejected"
     completed = "completed"
-class AgentActionStatus(str, Enum):
-    pending = "pending"
-    executed = "executed"
-    failed = "failed"
 
+class ConversationStatus(str, Enum):
+    active = "active"
+    closed = "closed"
 
-class EmbeddingSourceType(str, Enum):
-    product = "product"
-    offer = "offer"
-    policy = "policy"
-    faq = "faq"
-    order = "order"
 class DeliveryStatus(str, Enum):
     pending = "pending"
     assigned = "assigned"
@@ -59,6 +49,21 @@ class DeliveryStatus(str, Enum):
     cancelled = "cancelled"
 
 
+class FulfillmentType(str, Enum):
+    delivery = "delivery"
+    pickup = "pickup"
+
+
+class FulfillmentSource(str, Enum):
+    global_ = "global"   # Python-safe, maps to DB enum
+    store = "store"
+
+
+class MessageRole(str, Enum):
+    system = "system"
+    user = "user"
+    assistant = "assistant"
+
 class UserEventType(str, Enum):
     view_product = "view_product"
     click_product = "click_product"
@@ -66,7 +71,13 @@ class UserEventType(str, Enum):
     filter = "filter"
     add_to_cart = "add_to_cart"
     remove_from_cart = "remove_from_cart"
+
+    checkout_started = "checkout_started"
     order_created = "order_created"
     payment_success = "payment_success"
-    complaint_created = "complaint_created"
+    payment_failed = "payment_failed"
+    order_cancelled = "order_cancelled"
+    refund_requested = "refund_requested"
 
+    complaint_created = "complaint_created"
+    chat_message = "chat_message"

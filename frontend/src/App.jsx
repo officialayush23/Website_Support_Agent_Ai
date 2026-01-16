@@ -68,8 +68,9 @@ function App() {
               <Route path="orders" element={<Orders />} />
               <Route path="cart" element={<Cart />} />
               <Route path="checkout" element={<Checkout />} />
-              <Route path="order-details" element={<OrderDetail />} />
+             
               <Route path="chat" element={<ChatInterface />} />
+               <Route path="orders/:orderId" element={<OrderDetail />} />
               
               {/* Product List (explicit path) */}
               <Route path="products" element={<ProductList />} />

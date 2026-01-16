@@ -2,10 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../../lib/api';
 import { toast } from 'sonner';
 import { Package, Truck, Check, X, Clock } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 export default function Orders() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchOrders();
@@ -43,14 +45,18 @@ export default function Orders() {
           </div>
       ) : (
           orders.map(order => (
-              <div key={order.id} className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm hover:border-blue-200 transition-colors">
+              <div 
+                key={order.id} 
+                onClick={() => navigate(`/demo/orders/${order.id}`)}
+                className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm hover:border-blue-200 transition-all cursor-pointer group"
+              >
                   <div className="flex justify-between items-start mb-6">
                       <div className="flex items-center gap-4">
-                          <div className="p-3 bg-gray-50 rounded-full">
+                          <div className="p-3 bg-gray-50 rounded-full group-hover:bg-blue-50 transition-colors">
                               {getStatusIcon(order.status)}
                           </div>
                           <div>
-                              <h3 className="font-bold text-gray-900 text-lg">Order #{order.id.slice(0,8)}</h3>
+                              <h3 className="font-bold text-gray-900 text-lg group-hover:text-blue-600 transition-colors">Order #{order.id.slice(0,8)}</h3>
                               <p className="text-sm text-gray-500">{new Date(order.created_at).toLocaleDateString()} at {new Date(order.created_at).toLocaleTimeString()}</p>
                           </div>
                       </div>
@@ -61,15 +67,9 @@ export default function Orders() {
                           </span>
                       </div>
                   </div>
-
-                  {/* If you have order items in the response, map them here. 
-                      Based on your schema OrderOut, it currently only has total/status. 
-                      You might want to update OrderOut to include items: List[OrderItemOut] 
-                  */}
                   
-                  <div className="border-t border-gray-100 pt-4 flex justify-between items-center">
-                      <p className="text-sm text-gray-500">Items: {order.items?.length || 0}</p>
-                      {/* Placeholder for future "Track Package" button if delivery exists */}
+                  <div className="border-t border-gray-100 pt-4 flex justify-between items-center text-sm text-gray-500">
+                      <p>Tap to view details</p>
                   </div>
               </div>
           ))

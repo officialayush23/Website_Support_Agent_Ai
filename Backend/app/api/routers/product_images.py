@@ -18,8 +18,8 @@ router = APIRouter(
 
 
 @router.post("/")
-async def upload(
-    product_id: UUID,
+async def upload_image(
+    variant_id: UUID,
     file: UploadFile = File(...),
     is_primary: bool = False,
     db: AsyncSession = Depends(get_db),
@@ -30,7 +30,7 @@ async def upload(
 
     img = await upload_product_image(
         db=db,
-        product_id=product_id,
+        variant_id=variant_id,
         file=file,
         is_primary=is_primary,
     )
@@ -43,7 +43,7 @@ async def upload(
 
 
 @router.delete("/{image_id}")
-async def remove(
+async def remove_image(
     image_id: UUID,
     db: AsyncSession = Depends(get_db),
     user=Depends(get_current_user),
@@ -51,5 +51,5 @@ async def remove(
     if user["role"] != "admin":
         forbidden()
 
-    await delete_product_image(db, image_id)
+    await delete_product_image(db, image_id=image_id)
     return {"status": "deleted"}
