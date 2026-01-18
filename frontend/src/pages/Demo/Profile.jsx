@@ -1,3 +1,4 @@
+// frontend/src/pages/Demo/Profile.jsx
 import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';

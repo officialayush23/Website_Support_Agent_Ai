@@ -3,35 +3,19 @@ import { supabase } from './supabase';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 export async function apiRequest(endpoint, options = {}) {
-  let token;
+  let token = options.headers?.Authorization;
 
-  // 1. Check if token is already provided in headers (Optimization)
-  if (options.headers?.Authorization) {
-    // Token is already in the headers passed to this function
-    // We don't need to do anything, fetch will use it.
-  } else {
-    // 2. Otherwise, fetch current session token
+  if (!token) {
     const { data: { session } } = await supabase.auth.getSession();
     token = session?.access_token;
-  
-    if (!token) {
-      throw new Error("Unauthorized: No session token found");
-    }
-    
-    // Add to headers
-    options.headers = {
-      ...options.headers,
-      'Authorization': `Bearer ${token}`,
-    };
   }
 
-  // 3. Set Content-Type default
   const headers = {
     'Content-Type': 'application/json',
+    ...(token && { 'Authorization': `Bearer ${token}` }),
     ...options.headers,
   };
 
-  // 4. Make request
   const response = await fetch(`${API_URL}${endpoint}`, {
     ...options,
     headers,
@@ -45,25 +29,26 @@ export async function apiRequest(endpoint, options = {}) {
   return response.json();
 }
 
-// ... analytics export remains the same
+export const api = {
+  get: (url) => apiRequest(url, { method: 'GET' }),
+  post: (url, body) => apiRequest(url, { method: 'POST', body: JSON.stringify(body) }),
+  patch: (url, body) => apiRequest(url, { method: 'PATCH', body: JSON.stringify(body) }),
+  del: (url) => apiRequest(url, { method: 'DELETE' }),
+};
+
 export const analytics = {
-  track: async (eventType, payload = {}) => {
+  track: async (eventType, metadata = {}) => {
     try {
-      await apiRequest('/events/', {
-        method: 'POST',
-        body: JSON.stringify({
-          event_type: eventType,
-          product_id: payload.productId || null,
-          order_id: payload.orderId || null,
-          metadata: payload.metadata || {}
-        })
-      });
-    } catch (err) {
-      console.error("[Analytics] Failed to track event:", err);
-    }
-  },
-  
-  getContext: async () => {
-    return apiRequest('/events/context');
+      const { productId, orderId, variantId, ...rest } = metadata;
+      const payload = {
+        event_type: eventType,
+        product_id: productId || null,
+        variant_id: variantId || null,
+        order_id: orderId || null,
+        metadata: rest
+      };
+      apiRequest('/events/', { method: 'POST', body: JSON.stringify(payload) })
+        .catch(err => console.warn("Tracking failed", err));
+    } catch (e) { console.warn("Analytics error", e); }
   }
 };

@@ -68,7 +68,8 @@ TOOLS = [
                 "fulfillment_type": Schema(type=Type.STRING),
                 "store_id": Schema(type=Type.STRING),
             },
-            required=["address_id"],
+            required=["fulfillment_type"],
+
         ),
     ),
 

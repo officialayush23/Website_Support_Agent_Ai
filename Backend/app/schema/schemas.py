@@ -1,6 +1,6 @@
 # app/schema/schemas.py
 from pydantic import BaseModel, Field, model_validator
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any,Literal
 from uuid import UUID
 from datetime import datetime, time
 
@@ -15,7 +15,8 @@ from app.models.enums import (
 class UserOut(BaseModel):
     id: UUID
     name: Optional[str]
-    role: str # OK to keep string IF auth layer already normalizes
+    role: str 
+    is_payment_agent_enabled: bool
 
 
     class Config:
@@ -166,6 +167,15 @@ class OfferOut(OfferCreate):
 
 
 # ================= CHECKOUT / ORDERS =================
+class CheckoutOut(BaseModel):
+    order_id: UUID
+    status: str
+    subtotal: float
+    discount_total: float
+    total: float
+    fulfillment_type: FulfillmentType
+    store_id: Optional[UUID]
+    created_at: datetime
 
 class CheckoutCreate(BaseModel):
     address_id: Optional[UUID] = None
@@ -180,6 +190,12 @@ class OrderItemOut(BaseModel):
     price: float
     fulfillment_source: FulfillmentSource
 
+class OrderStatusHistoryOut(BaseModel):
+    status: OrderStatus
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
 
 class OrderOut(BaseModel):
     id: UUID
@@ -188,12 +204,25 @@ class OrderOut(BaseModel):
     store_id: Optional[UUID]
     subtotal: float
     discount_total: float
+    status_history: List[OrderStatusHistoryOut] = []
     total: float
     created_at: datetime
     items: List[OrderItemOut]
 
     class Config:
         from_attributes = True
+
+class AgentActionOut(BaseModel):
+    id: UUID
+    conversation_id: UUID
+    action_type: str        
+    payload: Dict[str, Any] 
+    status: str             
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
 
 
 # ================= DELIVERY / PICKUP =================
@@ -308,10 +337,19 @@ class InventoryUpdate(BaseModel):
     allocated_stock: int = Field(ge=0)
 
 
+class StoreInventoryItemOut(BaseModel):
+    variant_id: UUID
+    sku: str
+    price: float
+    allocated_stock: int
+    in_hand_stock: int
+
+
 class StoreInventoryOut(BaseModel):
     store_id: UUID
     store_name: str
-    items: list[dict]
+    items: list[StoreInventoryItemOut]
+
 # ================= PAYMENTS =================
 
 class PaymentCreate(BaseModel):
@@ -387,3 +425,73 @@ class ComplaintUpdate(BaseModel):
 class UserUpdate(BaseModel):
     name: Optional[str] = None
 
+class LeadCreate(BaseModel):
+    email: str
+    requirements: Optional[str] = None
+
+class LeadOut(LeadCreate):
+    id: UUID
+    status: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class StockAllocation(BaseModel):
+    variant_id: UUID
+    quantity: int
+
+
+
+class AttributeDefinitionCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    value_type: str = "string"  # string | number | enum
+    allowed_values: Optional[list[str]] = None
+    is_required: bool = False
+    is_active: bool = True
+
+
+class AttributeDefinitionUpdate(BaseModel):
+    description: Optional[str] = None
+    value_type: Optional[str] = None
+    allowed_values: Optional[list[str]] = None
+    is_required: Optional[bool] = None
+    is_active: Optional[bool] = None
+
+
+class AttributeDefinitionOut(AttributeDefinitionCreate):
+    id: UUID
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class ProductStockOverviewOut(BaseModel):
+    product_id: UUID
+    name: str
+    total_stock: int
+
+
+class VariantStockOut(BaseModel):
+    variant_id: UUID
+    sku: str
+    price: float
+    total_stock: int
+    available_stock: int
+
+
+class InventoryMovementOut(BaseModel):
+    id: UUID
+    variant_id: UUID
+
+    source: Optional[Literal["global_inventory", "store_inventory"]]
+    destination: Optional[Literal["global_inventory", "store_inventory"]]
+
+    quantity: int
+    reason: str
+
+    reference_type: Optional[str]
+    reference_id: Optional[UUID]
+
+    created_at: datetime

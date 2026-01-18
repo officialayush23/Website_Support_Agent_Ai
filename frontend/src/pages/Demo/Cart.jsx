@@ -1,33 +1,27 @@
 import React, { useEffect, useState } from 'react';
-import { apiRequest, analytics } from '../../lib/api';
-import { toast } from 'sonner';
-import { Trash2, Plus, Minus, CreditCard, MapPin, ArrowRight, ShoppingBag, Loader2 } from 'lucide-react';
+import { api, analytics } from '../../lib/api';
+import { ShoppingBag, Trash2, Plus, Minus, ArrowRight, Tag, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 
 export default function Cart() {
   const [cart, setCart] = useState(null);
-  const [addresses, setAddresses] = useState([]);
-  const [selectedAddress, setSelectedAddress] = useState(null);
+  const [offerPreview, setOfferPreview] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [processing, setProcessing] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
-    fetchData();
+    fetchCart();
   }, []);
 
-  const fetchData = async () => {
+  const fetchCart = async () => {
     try {
-      const [cartData, addressData] = await Promise.all([
-        apiRequest('/cart/'),
-        apiRequest('/addresses/')
-      ]);
-      setCart(cartData); 
-      setAddresses(addressData);
-      
-      const defaultAddr = addressData.find(a => a.is_default);
-      if (defaultAddr) setSelectedAddress(defaultAddr.id);
-      
+      setLoading(true);
+      const data = await api.get('/cart/');
+      setCart(data);
+      if (data.items.length > 0) {
+        await fetchOffers();
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -35,157 +29,122 @@ export default function Cart() {
     }
   };
 
-  const updateQuantity = async (productId, newQty) => {
-    if (newQty < 1) return;
+  const fetchOffers = async () => {
     try {
-      // Optimistic update
-      setCart(prev => ({
-          ...prev,
-          items: prev.items.map(item => item.product_id === productId ? { ...item, quantity: newQty } : item)
-      }));
-
-      await apiRequest(`/cart/items/${productId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ quantity: newQty })
-      });
-    } catch (err) {
-      toast.error("Failed to update cart");
-      fetchData(); // Revert on error
-    }
+      const data = await api.get('/cart/offers');
+      setOfferPreview(data);
+    } catch (e) {}
   };
 
-  const removeItem = async (productId) => {
+  const updateQuantity = async (variantId, newQty) => {
     try {
-      // Optimistic update
-      setCart(prev => ({
-          ...prev,
-          items: prev.items.filter(item => item.product_id !== productId)
-      }));
-
-      // ✅ Use DELETE endpoint
-      await apiRequest(`/cart/items/${productId}`, { method: 'DELETE' });
-      
-      analytics.track('remove_from_cart', { productId });
-      toast.success("Item removed");
-    } catch (err) {
-      toast.error("Failed to remove item");
-      fetchData();
-    }
-  };
-
-  const handleCheckout = () => {
-      if (!selectedAddress) {
-          toast.error("Please select a shipping address");
-          return;
+      if (newQty <= 0) {
+        await api.del(`/cart/items/${variantId}`);
+        toast.success("Item removed");
+      } else {
+        await api.patch(`/cart/items/${variantId}`, { quantity: newQty });
       }
-      navigate('/demo/checkout');
+      fetchCart(); // Refetch to update totals/offers on backend
+    } catch (err) {
+      toast.error("Update failed");
+    }
   };
 
-  if (loading) return <div className="flex justify-center p-20"><Loader2 className="animate-spin text-gray-400" /></div>;
+  const clearCart = async () => {
+    if(!confirm("Empty your cart?")) return;
+    await api.del('/cart/');
+    setCart(null);
+    setOfferPreview(null);
+  };
 
-  const cartTotal = cart?.items?.reduce((sum, item) => {
-      const price = item.product?.price || 0; 
-      return sum + (price * item.quantity);
-  }, 0) || 0;
+  if (loading) return <div className="p-20 flex justify-center"><Loader2 className="animate-spin text-gray-400"/></div>;
+
+  if (!cart?.items || cart.items.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[60vh] text-center space-y-4 animate-in fade-in">
+        <div className="bg-gray-100 p-6 rounded-full"><ShoppingBag size={48} className="text-gray-400"/></div>
+        <h2 className="text-2xl font-bold text-gray-900">Your cart is empty</h2>
+        <p className="text-gray-500">Looks like you haven't added anything yet.</p>
+        <button onClick={() => navigate('/demo')} className="bg-gray-900 text-white px-8 py-3 rounded-xl font-medium hover:bg-black transition-all">Start Shopping</button>
+      </div>
+    );
+  }
 
   return (
-    <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-10 animate-in fade-in duration-500">
-      
-      {/* Cart Items */}
-      <div className="lg:col-span-2 space-y-6">
-        <h1 className="text-3xl font-bold text-gray-900" style={{ fontFamily: '"Charm", cursive' }}>Your Bag</h1>
-        
-        {(!cart?.items || cart.items.length === 0) ? (
-            <div className="text-center py-20 bg-white rounded-2xl border border-dashed border-gray-200">
-                <ShoppingBag className="mx-auto h-16 w-16 text-gray-300 mb-4" />
-                <p className="text-gray-500 text-lg">Your cart is empty.</p>
-                <button onClick={() => navigate('/demo')} className="mt-4 text-blue-600 font-medium hover:underline">Continue Shopping</button>
-            </div>
-        ) : (
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                {cart.items.map((item) => (
-                    <div key={item.product_id} className="p-6 flex gap-6 border-b border-gray-100 last:border-0">
-                        <div className="h-24 w-24 flex-shrink-0 overflow-hidden rounded-md border border-gray-200">
-                            <img
-                                src={item.product?.images?.[0]?.image_url || "https://ui.shadcn.com/placeholder.svg"}
-                                alt={item.product?.name || "Product"}
-                                className="h-full w-full object-cover object-center"
-                            />
-                        </div>
-
-                        <div className="flex flex-1 flex-col">
-                            <div>
-                                <div className="flex justify-between text-base font-medium text-gray-900">
-                                    <h3>{item.product?.name || "Unknown Item"}</h3>
-                                    <p className="ml-4">${((item.product?.price || 0) * item.quantity).toFixed(2)}</p>
-                                </div>
-                                <p className="mt-1 text-sm text-gray-500">{item.product?.category}</p>
-                            </div>
-                            <div className="flex flex-1 items-end justify-between text-sm">
-                                <div className="flex items-center border border-gray-300 rounded-lg">
-                                    <button 
-                                        onClick={() => updateQuantity(item.product_id, item.quantity - 1)}
-                                        className="px-3 py-1 hover:bg-gray-100 text-gray-600 disabled:opacity-50"
-                                        disabled={item.quantity <= 1}
-                                    >
-                                        <Minus size={14} />
-                                    </button>
-                                    <span className="px-2 font-medium">{item.quantity}</span>
-                                    <button 
-                                        onClick={() => updateQuantity(item.product_id, item.quantity + 1)}
-                                        className="px-3 py-1 hover:bg-gray-100 text-gray-600"
-                                    >
-                                        <Plus size={14} />
-                                    </button>
-                                </div>
-
-                                <button
-                                    type="button"
-                                    onClick={() => removeItem(item.product_id)}
-                                    className="font-medium text-red-500 hover:text-red-700 flex items-center gap-1"
-                                >
-                                    <Trash2 size={16} /> Remove
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                ))}
-            </div>
-        )}
+    <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="flex items-center justify-between">
+         <h1 className="text-3xl font-bold font-serif">Your Bag <span className="text-gray-400 text-lg font-sans font-normal ml-2">({cart.items.length} items)</span></h1>
+         <button onClick={clearCart} className="text-sm text-red-500 hover:text-red-700 font-medium">Clear Cart</button>
       </div>
 
-      {/* Checkout Section */}
-      {cart?.items?.length > 0 && (
-          <div className="lg:col-span-1 space-y-6">
-              <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
-                  <h2 className="text-lg font-bold text-gray-900 mb-4">Order Summary</h2>
-                  <div className="space-y-2 text-sm text-gray-600 border-b border-gray-100 pb-4 mb-4">
-                      <div className="flex justify-between">
-                          <span>Subtotal</span>
-                          <span>${cartTotal.toFixed(2)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                          <span>Shipping</span>
-                          <span>Free</span>
-                      </div>
-                  </div>
-                  <div className="flex justify-between text-base font-bold text-gray-900 mb-6">
-                      <span>Total</span>
-                      <span>${cartTotal.toFixed(2)}</span>
-                  </div>
-                  
-                  <button
-                    onClick={handleCheckout}
-                    disabled={processing}
-                    className="w-full bg-black text-white py-4 rounded-xl font-bold text-lg hover:bg-gray-800 transition-all flex items-center justify-center gap-2 shadow-xl shadow-gray-200 disabled:opacity-70 disabled:cursor-not-allowed"
-                  >
-                    {processing ? "Processing..." : (
-                        <>Checkout <ArrowRight size={20} /></>
-                    )}
-                  </button>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
+        {/* Cart Items */}
+        <div className="lg:col-span-2 space-y-6">
+          {cart.items.map((item) => (
+            <div key={item.variant_id} className="flex gap-6 bg-white p-4 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
+              <div className="w-24 h-32 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
+                 <img src={item.variant?.images?.[0]?.image_url || item.product?.images?.[0]?.image_url || "https://ui.shadcn.com/placeholder.svg"} className="w-full h-full object-cover" alt="" />
               </div>
-          </div>
-      )}
+              
+              <div className="flex-1 flex flex-col justify-between">
+                <div>
+                   <h3 className="text-lg font-bold text-gray-900">{item.product?.name}</h3>
+                   <p className="text-gray-500 text-sm">{item.product?.category}</p>
+                   {item.variant?.attributes && (
+                     <div className="flex gap-2 mt-2">
+                       {Object.entries(item.variant.attributes).map(([k,v]) => (
+                         <span key={k} className="text-xs bg-gray-100 px-2 py-1 rounded capitalize">{k}: {v}</span>
+                       ))}
+                     </div>
+                   )}
+                </div>
+                <div className="flex items-center justify-between mt-4">
+                  <p className="font-bold text-lg">${item.variant?.price || item.product?.price}</p>
+                  
+                  <div className="flex items-center gap-3 bg-gray-50 rounded-lg p-1 border border-gray-200">
+                    <button onClick={() => updateQuantity(item.variant_id, item.quantity - 1)} className="p-1 hover:bg-white rounded shadow-sm"><Minus size={14}/></button>
+                    <span className="text-sm font-semibold w-6 text-center">{item.quantity}</span>
+                    <button onClick={() => updateQuantity(item.variant_id, item.quantity + 1)} className="p-1 hover:bg-white rounded shadow-sm"><Plus size={14}/></button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Summary */}
+        <div className="lg:col-span-1">
+           <div className="bg-white p-8 rounded-2xl border border-gray-200 shadow-xl sticky top-24">
+              <h2 className="text-xl font-bold mb-6">Order Summary</h2>
+              
+              <div className="space-y-4 text-sm text-gray-600 mb-6">
+                <div className="flex justify-between">
+                  <span>Subtotal</span>
+                  <span className="font-medium text-gray-900">${offerPreview?.subtotal?.toFixed(2) || '0.00'}</span>
+                </div>
+                
+                {offerPreview?.offers_applied?.map(offer => (
+                   <div key={offer.id} className="flex justify-between text-green-600 bg-green-50 p-2 rounded">
+                      <span className="flex items-center gap-1"><Tag size={12}/> {offer.title}</span>
+                      <span>-{offer.amount_off || offer.percentage_off + '%'}</span>
+                   </div>
+                ))}
+                
+                <div className="flex justify-between pt-4 border-t border-gray-100 text-lg font-bold text-gray-900">
+                  <span>Total</span>
+                  <span>${offerPreview?.final_total?.toFixed(2) || offerPreview?.subtotal?.toFixed(2) || '0.00'}</span>
+                </div>
+              </div>
+
+              <button 
+                onClick={() => navigate('/demo/checkout')}
+                className="w-full bg-gray-900 text-white py-4 rounded-xl font-bold text-lg hover:bg-black transition-all flex items-center justify-center gap-2 group"
+              >
+                Checkout <ArrowRight className="group-hover:translate-x-1 transition-transform"/>
+              </button>
+           </div>
+        </div>
+      </div>
     </div>
   );
 }

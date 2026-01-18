@@ -1,107 +1,159 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { apiRequest } from '../../../lib/api';
+import { useAuth } from '../../../context/AuthContext';
+import { Send, User, Bot, AlertCircle, CheckCircle, Hand } from 'lucide-react';
 import { toast } from 'sonner';
-import { MessageSquare, CheckCircle, Loader2, Clock } from 'lucide-react';
 
 export default function AdminSupport() {
-  const [complaints, setComplaints] = useState([]);
-  const [loading, setLoading] = useState(true);
+    const [conversations, setConversations] = useState([]);
+    const [activeConvo, setActiveConvo] = useState(null);
+    const [messages, setMessages] = useState([]);
+    const [reply, setReply] = useState('');
+    const { user } = useAuth();
+    const messagesEndRef = useRef(null);
 
-  useEffect(() => {
-    fetchComplaints();
-  }, []);
+    // Poll Queue
+    useEffect(() => {
+        const fetchQueue = async () => {
+            const data = await apiRequest('/support/admin/conversations/ai-handoffs?status=active');
+            setConversations(data);
+        };
+        fetchQueue();
+        const interval = setInterval(fetchQueue, 5000); // Poll every 5s
+        return () => clearInterval(interval);
+    }, []);
 
-  const fetchComplaints = async () => {
-    try {
-      const data = await apiRequest('/admin/complaints/');
-      setComplaints(data);
-    } catch (err) {
-      toast.error("Failed to load tickets");
-    } finally {
-      setLoading(false);
-    }
-  };
+    // Load Messages
+    useEffect(() => {
+        if (activeConvo) {
+            apiRequest(`/support/conversations/${activeConvo.id}/messages`).then(setMessages);
+        }
+    }, [activeConvo]);
 
-  const handleUpdateStatus = async (id, newStatus) => {
-    try {
-      await apiRequest(`/admin/complaints/${id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ status: newStatus })
-      });
-      
-      setComplaints(prev => prev.map(c => c.id === id ? { ...c, status: newStatus } : c));
-      toast.success(`Ticket marked as ${newStatus}`);
-    } catch (err) {
-      toast.error("Failed to update status");
-    }
-  };
+    useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [messages]);
 
-  const getStatusColor = (status) => {
-    switch(status) {
-        case 'open': return 'bg-red-100 text-red-700 border-red-200';
-        case 'in_progress': return 'bg-yellow-100 text-yellow-700 border-yellow-200';
-        case 'resolved': return 'bg-green-100 text-green-700 border-green-200';
-        default: return 'bg-gray-100 text-gray-700';
-    }
-  };
+    const handleJoin = async () => {
+        try {
+            await apiRequest(`/support/conversations/${activeConvo.id}/join`, { method: 'POST' });
+            toast.success("Joined conversation");
+            setActiveConvo({ ...activeConvo, assigned_to: user.id });
+        } catch (e) {
+            toast.error("Failed to join");
+        }
+    };
 
-  if (loading) return <div className="flex justify-center p-10"><Loader2 className="animate-spin text-gray-400" /></div>;
+    const handleSend = async (e) => {
+        e.preventDefault();
+        if (!reply.trim()) return;
 
-  return (
-    <div className="space-y-6 animate-in fade-in duration-500">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-gray-900">Support Tickets</h1>
-        <div className="text-sm text-gray-500">Manage customer complaints</div>
-      </div>
+        try {
+            await apiRequest(`/support/conversations/${activeConvo.id}/messages`, {
+                method: 'POST',
+                body: JSON.stringify({ content: reply })
+            });
+            setMessages([...messages, { role: 'assistant', content: reply, created_at: new Date().toISOString() }]);
+            setReply('');
+        } catch (err) {
+            toast.error("Failed to send");
+        }
+    };
 
-      <div className="grid gap-4">
-        {complaints.length === 0 ? (
-            <div className="text-center py-10 text-gray-500 bg-white rounded-xl border border-dashed">
-                No active complaints found.
-            </div>
-        ) : (
-            complaints.map((ticket) => (
-                <div key={ticket.id} className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm flex flex-col md:flex-row justify-between gap-4">
-                    <div className="flex gap-4">
-                        <div className="mt-1">
-                            <div className="bg-blue-50 p-3 rounded-full text-blue-600">
-                                <MessageSquare size={20} />
-                            </div>
-                        </div>
-                        <div>
-                            <div className="flex items-center gap-2 mb-1">
-                                <h3 className="font-semibold text-gray-900">Order #{ticket.order_id?.slice(0,8)}...</h3>
-                                <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium border ${getStatusColor(ticket.status)}`}>
-                                    {ticket.status.replace('_', ' ').toUpperCase()}
-                                </span>
-                            </div>
-                            <p className="text-gray-600">{ticket.description}</p>
-                            <p className="text-xs text-gray-400 mt-2">{new Date(ticket.created_at).toLocaleString()}</p>
-                        </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                        {ticket.status !== 'resolved' && (
-                            <>
-                                <button 
-                                    onClick={() => handleUpdateStatus(ticket.id, 'in_progress')}
-                                    className="px-3 py-1.5 text-sm font-medium text-yellow-700 bg-yellow-50 hover:bg-yellow-100 rounded-lg border border-yellow-200 flex items-center gap-1"
-                                >
-                                    <Clock size={14} /> In Progress
-                                </button>
-                                <button 
-                                    onClick={() => handleUpdateStatus(ticket.id, 'resolved')}
-                                    className="px-3 py-1.5 text-sm font-medium text-green-700 bg-green-50 hover:bg-green-100 rounded-lg border border-green-200 flex items-center gap-1"
-                                >
-                                    <CheckCircle size={14} /> Resolve
-                                </button>
-                            </>
-                        )}
-                    </div>
+    return (
+        <div className="h-[calc(100vh-140px)] flex gap-6 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+            {/* Sidebar List */}
+            <div className="w-80 border-r border-gray-200 dark:border-gray-700 flex flex-col">
+                <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900">
+                    <h2 className="font-bold dark:text-white flex items-center gap-2">
+                        <AlertCircle className="text-orange-500" size={18} />
+                        Handoff Queue ({conversations.length})
+                    </h2>
                 </div>
-            ))
-        )}
-      </div>
-    </div>
-  );
+                <div className="flex-1 overflow-y-auto">
+                    {conversations.map(c => (
+                        <div 
+                            key={c.id}
+                            onClick={() => setActiveConvo(c)}
+                            className={`p-4 border-b border-gray-100 dark:border-gray-800 cursor-pointer hover:bg-blue-50 dark:hover:bg-gray-700 transition-colors ${activeConvo?.id === c.id ? 'bg-blue-50 dark:bg-gray-700' : ''}`}
+                        >
+                            <div className="flex justify-between mb-1">
+                                <span className="font-semibold text-sm dark:text-gray-200">User {c.user_id.substring(0,4)}</span>
+                                <span className="text-xs text-gray-500">{new Date(c.handed_off_at).toLocaleTimeString()}</span>
+                            </div>
+                            <p className="text-xs text-red-500 font-medium truncate">{c.handoff_reason}</p>
+                            {c.assigned_to ? (
+                                <span className="text-[10px] bg-green-100 text-green-700 px-1 rounded mt-1 inline-block">Assigned</span>
+                            ) : (
+                                <span className="text-[10px] bg-red-100 text-red-700 px-1 rounded mt-1 inline-block">Unassigned</span>
+                            )}
+                        </div>
+                    ))}
+                    {conversations.length === 0 && (
+                        <div className="p-8 text-center text-gray-400 text-sm">No active tickets</div>
+                    )}
+                </div>
+            </div>
+
+            {/* Chat Area */}
+            <div className="flex-1 flex flex-col">
+                {activeConvo ? (
+                    <>
+                        <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center bg-white dark:bg-gray-800">
+                            <div>
+                                <h3 className="font-bold dark:text-white">Support Chat</h3>
+                                <p className="text-xs text-gray-500">ID: {activeConvo.id}</p>
+                            </div>
+                            
+                            {!activeConvo.assigned_to ? (
+                                <button onClick={handleJoin} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
+                                    <Hand size={16} /> Join Conversation
+                                </button>
+                            ) : (
+                                <div className="text-green-600 text-sm font-medium flex items-center gap-2 bg-green-50 px-3 py-1 rounded-full">
+                                    <CheckCircle size={16} /> You joined this chat
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50 dark:bg-gray-900">
+                            {messages.map((m, i) => (
+                                <div key={i} className={`flex ${m.role === 'user' ? 'justify-start' : 'justify-end'}`}>
+                                    <div className={`max-w-[70%] rounded-2xl px-4 py-3 shadow-sm ${
+                                        m.role === 'user' 
+                                            ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700' 
+                                            : 'bg-blue-600 text-white'
+                                    }`}>
+                                        <p className="text-sm">{m.content}</p>
+                                        <span className="text-[10px] opacity-70 mt-1 block">
+                                            {m.role === 'user' ? 'Customer' : 'Agent'} • {new Date(m.created_at).toLocaleTimeString()}
+                                        </span>
+                                    </div>
+                                </div>
+                            ))}
+                            <div ref={messagesEndRef} />
+                        </div>
+
+                        <form onSubmit={handleSend} className="p-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex gap-2">
+                            <input 
+                                className="flex-1 bg-gray-100 dark:bg-gray-900 border-0 rounded-lg px-4 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                                placeholder={activeConvo.assigned_to ? "Type a reply..." : "Join conversation to reply"}
+                                value={reply}
+                                onChange={e => setReply(e.target.value)}
+                                disabled={!activeConvo.assigned_to}
+                            />
+                            <button type="submit" disabled={!activeConvo.assigned_to} className="p-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                                <Send size={20} />
+                            </button>
+                        </form>
+                    </>
+                ) : (
+                    <div className="flex-1 flex items-center justify-center text-gray-400 flex-col gap-4">
+                        <Bot size={48} className="opacity-20" />
+                        <p>Select a conversation from the queue</p>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
 }

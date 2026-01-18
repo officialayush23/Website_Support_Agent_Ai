@@ -6,7 +6,7 @@ from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from google import genai
-
+from google.genai import types
 from app.models.models import Embedding
 from app.core.config import settings
 from app.utils.api_error import internal_error
@@ -18,7 +18,7 @@ from app.utils.api_error import internal_error
 
 client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
-EMBEDDING_MODEL = "models/embedding-001"
+EMBEDDING_MODEL = "gemini-embedding-001"
 EMBEDDING_DIM = 768  # must match VECTOR(768)
 
 
@@ -40,6 +40,7 @@ async def generate_text_embedding(text: str) -> List[float]:
         result = client.models.embed_content(
             model=EMBEDDING_MODEL,
             contents=text,
+            config=types.EmbedContentConfig(output_dimensionality=768)
         )
 
         embedding = result.embeddings[0].values

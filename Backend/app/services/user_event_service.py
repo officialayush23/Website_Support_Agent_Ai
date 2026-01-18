@@ -10,7 +10,7 @@ from app.models.models import UserEvent, UserPreference, User
 from app.models.enums import user_event_type_enum
 from app.services.user_preference_llm_service import generate_preferences_from_events
 from app.services.embedding_service import generate_text_embedding, store_embedding
-
+from app.services.user_embedding_service import rebuild_user_embedding
 
 # =====================================================
 # EVENT TRACKING (CANONICAL)
@@ -104,6 +104,8 @@ async def recompute_user_preferences(db: AsyncSession, user_id: UUID):
         source_id=user_id,
         embedding=emb,
     )
+    await rebuild_user_embedding(db, user_id)
+
 
 
 # =====================================================

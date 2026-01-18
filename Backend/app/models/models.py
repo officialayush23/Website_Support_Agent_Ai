@@ -1,9 +1,4 @@
 from uuid import uuid4
-
-from sqlalchemy import (
-    Column, Text, Boolean, Numeric, ForeignKey,
-    TIMESTAMP, Integer, String, Time
-)
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
@@ -12,20 +7,12 @@ from pgvector.sqlalchemy import Vector
 from sqlalchemy import JSON
 from app.core.database import Base
 from app.models.enums import *
-
-from uuid import uuid4
 from sqlalchemy import (
     Column, Text, Boolean, Numeric, ForeignKey,
     TIMESTAMP, Integer, String, Time, Index
 )
-from sqlalchemy.dialects.postgresql import UUID, JSONB
-from sqlalchemy.sql import func
-from sqlalchemy.orm import relationship
-from geoalchemy2 import Geography
-from pgvector.sqlalchemy import Vector
+from datetime import datetime
 
-from app.core.database import Base
-from app.models.enums import *
 
 
 # ================= USERS =================
@@ -39,6 +26,7 @@ class User(Base):
     preferences = Column(JSONB, server_default="'{}'::jsonb")
 
     location = Column(Geography("POINT", srid=4326))
+    is_payment_agent_enabled = Column(Boolean, server_default="false")
     location_updated_at = Column(TIMESTAMP)
 
     created_at = Column(TIMESTAMP, server_default=func.now())
@@ -57,6 +45,7 @@ class UserPreference(Base):
     preferred_brands = Column(JSONB, server_default="'[]'::jsonb")
 
     last_updated_at = Column(TIMESTAMP, server_default=func.now())
+
 
 
 # ================= ADDRESSES =================
@@ -137,6 +126,15 @@ class GlobalInventory(Base):
 
     updated_at = Column(TIMESTAMP, server_default=func.now())
 
+class OrderStatusHistory(Base):
+    __tablename__ = "order_status_history"
+
+    id = Column(UUID, primary_key=True, default=uuid4)
+    order_id = Column(UUID, ForeignKey("orders.id", ondelete="CASCADE"))
+    status = Column(order_status_enum, nullable=False)
+    created_at = Column(TIMESTAMP, server_default=func.now()) 
+
+    order = relationship("Order", back_populates="status_history")
 
 class StoreInventory(Base):
     __tablename__ = "store_inventory"
@@ -214,6 +212,7 @@ class Order(Base):
 
     status = Column(order_status_enum, server_default="pending")
     fulfillment_type = Column(fulfillment_type_enum, server_default="delivery")
+    status_history = relationship("OrderStatusHistory", back_populates="order", cascade="all, delete")
 
     subtotal = Column(Numeric)
     discount_total = Column(Numeric, server_default="0")
@@ -362,72 +361,69 @@ class ChatSession(Base):
     __tablename__ = "chat_sessions"
 
     id = Column(UUID, primary_key=True, default=uuid4)
-    user_id = Column(UUID, ForeignKey("users.id"))
-
+    user_id = Column(UUID, ForeignKey("users.id", ondelete="CASCADE"))
     title = Column(Text)
     is_active = Column(Boolean, server_default="true")
-
     created_at = Column(TIMESTAMP, server_default=func.now())
     last_activity_at = Column(TIMESTAMP, server_default=func.now())
+
+    # Relationships
+    conversations = relationship("Conversation", back_populates="chat_session")
+    contexts = relationship("ChatContext", back_populates="chat_session")
 
 
 class Conversation(Base):
     __tablename__ = "conversations"
 
     id = Column(UUID, primary_key=True, default=uuid4)
+    # [NEW] Link to Session
     chat_session_id = Column(UUID, ForeignKey("chat_sessions.id", ondelete="CASCADE"))
     user_id = Column(UUID, ForeignKey("users.id"))
-
-    status = Column(conversation_status_enum, server_default="active")
-    context = Column(JSONB, server_default="'{}'::jsonb")
-
-    handled_by = Column(String, server_default="llm")
-    assigned_to = Column(UUID, ForeignKey("users.id"))
+    
+    status = Column(Text, server_default="active") # or Enum if you use it
+    
+    # [NEW] Handoff Fields
+    handled_by = Column(Text, server_default="llm") # 'llm' or 'human'
+    assigned_to = Column(UUID, ForeignKey("users.id")) # Support agent ID
+    handed_off_at = Column(TIMESTAMP)
+    handoff_reason = Column(Text)
+    ai_confidence = Column(Numeric)
 
     created_at = Column(TIMESTAMP, server_default=func.now())
     last_message_at = Column(TIMESTAMP, server_default=func.now())
 
+    # Relationships
+    chat_session = relationship("ChatSession", back_populates="conversations")
+    messages = relationship("Message", back_populates="conversation")
+
 
 class Message(Base):
     __tablename__ = "messages"
-
+    
     id = Column(UUID, primary_key=True, default=uuid4)
     conversation_id = Column(UUID, ForeignKey("conversations.id", ondelete="CASCADE"))
+    # [NEW] Direct link for easier history fetching
     chat_session_id = Column(UUID, ForeignKey("chat_sessions.id", ondelete="CASCADE"))
-
-    role = Column(message_role_enum)
+    
+    role = Column(Text) # 'user', 'assistant', 'system'
     content = Column(Text)
-
     created_at = Column(TIMESTAMP, server_default=func.now())
 
-
-class AgentAction(Base):
-    __tablename__ = "agent_actions"
-
-    id = Column(UUID, primary_key=True, default=uuid4)
-    conversation_id = Column(UUID, ForeignKey("conversations.id"))
-
-    action_type = Column(Text)
-    payload = Column(JSONB)
-
-    status = Column(agent_action_status_enum, server_default="executed")
-    confidence = Column(Numeric)
-
-    created_at = Column(TIMESTAMP, server_default=func.now())
-
+    conversation = relationship("Conversation", back_populates="messages")
 
 class ChatContext(Base):
     __tablename__ = "chat_contexts"
 
     id = Column(UUID, primary_key=True, default=uuid4)
-    chat_session_id = Column(UUID, ForeignKey("chat_sessions.id"))
-    conversation_id = Column(UUID, ForeignKey("conversations.id"))
-
-    summary = Column(Text)
+    chat_session_id = Column(UUID, ForeignKey("chat_sessions.id", ondelete="CASCADE"))
+    conversation_id = Column(UUID, ForeignKey("conversations.id", ondelete="CASCADE"))
+    
+    summary = Column(Text, nullable=False)
     token_count = Column(Integer)
     confidence = Column(Numeric)
-
     created_at = Column(TIMESTAMP, server_default=func.now())
+
+    chat_session = relationship("ChatSession", back_populates="contexts")
 
 
 # ================= EMBEDDINGS =================
@@ -463,3 +459,82 @@ class UserEvent(Base):
     created_at = Column(TIMESTAMP, server_default=func.now())
 
 
+class AgentAction(Base):
+    __tablename__ = "agent_actions"
+
+    id = Column(UUID, primary_key=True, default=uuid4)
+    conversation_id = Column(UUID, ForeignKey("conversations.id"))
+    action_type = Column(Text)
+    payload = Column(JSONB)
+    status = Column(agent_action_status_enum, server_default="executed")
+    confidence = Column(Numeric)
+    created_at = Column(TIMESTAMP, server_default=func.now())
+
+
+class Lead(Base):
+    __tablename__ = "leads"
+
+    id = Column(UUID, primary_key=True, default=uuid4)
+    email = Column(Text, nullable=False)
+    requirements = Column(Text)
+    status = Column(Text, server_default="new")
+    created_at = Column(TIMESTAMP, server_default=func.now())
+
+
+class AttributeDefinition(Base):
+    __tablename__ = "attribute_definitions"
+
+    id = Column(UUID, primary_key=True, default=uuid4)
+
+    name = Column(String, nullable=False, unique=True)
+    description = Column(Text)
+
+    # simple typing for now (extensible later)
+    value_type = Column(
+        String,
+        nullable=False,
+        server_default="string",  # string | number | enum
+    )
+
+    # enum-style allowed values
+    allowed_values = Column(JSONB)  # ["S", "M", "L"]
+
+    is_required = Column(Boolean, server_default="false")
+    is_active = Column(Boolean, server_default="true")
+
+    created_at = Column(TIMESTAMP, server_default=func.now())
+from app.models.enums import fulfillment_target_enum
+
+
+class InventoryMovement(Base):
+    __tablename__ = "inventory_movements"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+
+    variant_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("product_variants.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    source = Column(
+        fulfillment_target_enum,
+        nullable=True,
+    )
+
+    destination = Column(
+        fulfillment_target_enum,
+        nullable=True,
+    )
+
+    quantity = Column(Integer, nullable=False)
+
+    reason = Column(Text, nullable=False)
+
+    reference_type = Column(Text, nullable=True)
+    reference_id = Column(UUID(as_uuid=True), nullable=True)
+
+    created_at = Column(
+        default=datetime.utcnow,
+        nullable=False,
+    )

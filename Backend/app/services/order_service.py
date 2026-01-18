@@ -1,10 +1,10 @@
 # app/services/order_service.py
 
-from uuid import UUID
+from uuid import UUID,uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 from sqlalchemy.orm import selectinload
-
+from app.models.models import OrderStatusHistory
 from app.models.models import AgentAction, Complaint, Delivery, Order, OrderItem, Cart, CartItem, Payment, Pickup, Refund
 from app.schema.enums import OrderStatus
 from app.services.inventory_service import release_inventory_for_order
@@ -120,6 +120,12 @@ async def get_order_timeline(db: AsyncSession, *, order_id: UUID, user_id: UUID)
     if not order or order.user_id != user_id:
         not_found("Order")
 
+    history = await db.execute(
+        select(OrderStatusHistory)
+        .where(OrderStatusHistory.order_id == order_id)
+        .order_by(OrderStatusHistory.created_at)
+    )
+
     payments = await db.execute(
         select(Payment).where(Payment.order_id == order_id)
     )
@@ -148,6 +154,7 @@ async def get_order_timeline(db: AsyncSession, *, order_id: UUID, user_id: UUID)
 
     return {
         "order": order,
+        "history": history.scalars().all(), # [FIX] Add this
         "payments": payments.scalars().all(),
         "delivery": delivery.scalar_one_or_none(),
         "pickup": pickup.scalar_one_or_none(),
@@ -155,3 +162,11 @@ async def get_order_timeline(db: AsyncSession, *, order_id: UUID, user_id: UUID)
         "complaints": complaints.scalars().all(),
         "agent_actions": actions.scalars().all(),
     }
+
+
+async def log_order_status(db, order_id, status):
+    db.add(OrderStatusHistory(
+        id=uuid4(),
+        order_id=order_id,
+        status=status,
+    ))

@@ -1,3 +1,4 @@
+// frontend/src/pages/Demo/Admin/AdminProductList.jsx
 import React, { useEffect, useState, useRef } from 'react';
 import { apiRequest } from '../../../lib/api';
 import { supabase } from '../../../lib/supabase';

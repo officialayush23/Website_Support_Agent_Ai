@@ -1,3 +1,4 @@
+// frontend/src/pages/Demo/ProductList.jsx
 import React, { useEffect, useMemo, useState } from 'react';
 import { apiRequest, analytics } from '../../lib/api';
 import { ShoppingBag, X, Star, Check, ChevronLeft, ChevronRight, Search, Loader2 } from 'lucide-react';

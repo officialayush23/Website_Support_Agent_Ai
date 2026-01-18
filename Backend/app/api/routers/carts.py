@@ -10,6 +10,7 @@ from app.schema.schemas import (
     CartItemCreate,
     CartItemUpdate,
     CheckoutCreate,
+    CheckoutOut,
 )
 
 from app.services.cart_service import (
@@ -170,17 +171,12 @@ async def eligible_pickup_stores(
 # CHECKOUT
 # =====================================================
 
-@router.post("/checkout")
+@router.post("/checkout", response_model=CheckoutOut)
 async def checkout_cart(
     payload: CheckoutCreate,
     db: AsyncSession = Depends(get_db),
     user=Depends(get_current_user),
 ):
-    """
-    Canonical checkout.
-    - delivery OR pickup
-    - auto-store OR manual store_id
-    """
     return await checkout(
         db=db,
         user_id=user["user_id"],

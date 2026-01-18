@@ -98,3 +98,19 @@ user_event_type_enum = Enum(
 )
 
 
+fulfillment_target_enum=Enum(
+"global_inventory",
+ "store_inventory",
+ name="fulfillment_target_enum",
+ native_enum = True,)
+
+embedding_source_enum = Enum(
+   "product",
+  "variant",
+  "offer",
+  "chat_summary",
+  "image",
+  "user",
+  name="embedding_source_enum",
+  native_enum= True,
+)

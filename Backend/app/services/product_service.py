@@ -1,5 +1,4 @@
 # app/services/product_service.py
-
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -9,6 +8,7 @@ from app.models.models import (
     Product,
     ProductVariant,
     GlobalInventory,
+    AttributeDefinition,
 )
 from app.models.enums import user_event_type_enum
 from app.services.user_event_service import record_event
@@ -17,7 +17,32 @@ from app.utils.api_error import not_found, bad_request
 
 
 # =====================================================
-# PUBLIC: LIST PRODUCTS
+# INTERNAL: ATTRIBUTE VALIDATION
+# =====================================================
+
+async def validate_attributes(db: AsyncSession, attributes: dict):
+    res = await db.execute(select(AttributeDefinition))
+    defs = {d.name: d for d in res.scalars().all()}
+
+    # unknown attributes
+    for key in attributes.keys():
+        if key not in defs:
+            bad_request(f"Unknown attribute: {key}")
+
+    for name, d in defs.items():
+        if d.is_required and name not in attributes:
+            bad_request(f"Missing required attribute: {name}")
+
+        if name in attributes and d.allowed_values:
+            if attributes[name] not in d.allowed_values:
+                bad_request(
+                    f"Invalid value for {name}. "
+                    f"Allowed: {d.allowed_values}"
+                )
+
+
+# =====================================================
+# PUBLIC
 # =====================================================
 
 async def list_products(
@@ -29,9 +54,7 @@ async def list_products(
     res = await db.execute(
         select(Product)
         .where(Product.is_active.is_(True))
-        .options(
-            selectinload(Product.variants)
-        )
+        .options(selectinload(Product.variants))
     )
     products = res.scalars().unique().all()
 
@@ -46,10 +69,6 @@ async def list_products(
     return products
 
 
-# =====================================================
-# PUBLIC: GET PRODUCT
-# =====================================================
-
 async def get_product(
     db: AsyncSession,
     *,
@@ -58,14 +77,11 @@ async def get_product(
 ):
     res = await db.execute(
         select(Product)
-        .where(Product.id == product_id)
-        .options(
-            selectinload(Product.variants)
-        )
+        .where(Product.id == product_id, Product.is_active.is_(True))
+        .options(selectinload(Product.variants))
     )
     product = res.scalar_one_or_none()
-
-    if not product or not product.is_active:
+    if not product:
         not_found("Product")
 
     if user_id:
@@ -80,7 +96,7 @@ async def get_product(
 
 
 # =====================================================
-# ADMIN: CREATE PRODUCT
+# ADMIN: PRODUCT
 # =====================================================
 
 async def create_product(
@@ -102,13 +118,11 @@ async def create_product(
     await db.commit()
     await db.refresh(product)
 
+    # 🔥 embedding is mandatory
     await embed_product(db, product.id)
+
     return product
 
-
-# =====================================================
-# ADMIN: UPDATE PRODUCT
-# =====================================================
 
 async def update_product(
     db: AsyncSession,
@@ -132,10 +146,6 @@ async def update_product(
     return product
 
 
-# =====================================================
-# ADMIN: SOFT DELETE PRODUCT
-# =====================================================
-
 async def delete_product(
     db: AsyncSession,
     *,
@@ -151,7 +161,7 @@ async def delete_product(
 
 
 # =====================================================
-# ADMIN: CREATE VARIANT (WITH INVENTORY INIT)
+# ADMIN: VARIANTS
 # =====================================================
 
 async def create_variant(
@@ -166,36 +176,42 @@ async def create_variant(
     if not product or not product.is_active:
         not_found("Product")
 
-    existing = await db.execute(
+    exists = await db.execute(
         select(ProductVariant).where(ProductVariant.sku == sku)
     )
-    if existing.scalar_one_or_none():
+    if exists.scalar_one_or_none():
         bad_request("SKU already exists")
+
+    attrs = attributes or {}
+    await validate_attributes(db, attrs)
 
     variant = ProductVariant(
         id=uuid4(),
         product_id=product_id,
         sku=sku,
         price=price,
-        attributes=attributes or {},
+        attributes=attrs,
     )
 
     db.add(variant)
     await db.flush()
 
-    # 🔥 GLOBAL INVENTORY AUTO INIT
-    gi = GlobalInventory(
-        variant_id=variant.id,
-        total_stock=0,
-        allocated_stock=0,
-        reserved_stock=0,
+    # 🔥 global inventory always initialized
+    db.add(
+        GlobalInventory(
+            variant_id=variant.id,
+            total_stock=0,
+            allocated_stock=0,
+            reserved_stock=0,
+        )
     )
-    db.add(gi)
 
     await db.commit()
     await db.refresh(variant)
 
+    # 🔥 embedding is mandatory
     await embed_variant(db, variant.id)
+
     return variant
 
 
@@ -212,7 +228,6 @@ async def get_product_full(
             .selectinload(ProductVariant.images)
         )
     )
-
     product = res.scalar_one_or_none()
     if not product:
         not_found("Product")
@@ -240,4 +255,3 @@ async def get_product_full(
             for v in product.variants
         ],
     }
-

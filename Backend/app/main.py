@@ -7,7 +7,7 @@ from app.api.routers import (
     carts,
     orders,
     support,
-    admin,payments,stores,offers,delivery,complaints,product_images,recommendations,users,events,refunds,pickups,recommendations,handoff,ws,chat,
+    admin,payments,stores,offers,delivery,complaints,product_images,recommendations,users,events,refunds,pickups,recommendations,handoff,ws,leads
     
 )
 app = FastAPI(title="Website Support Agent")
@@ -25,11 +25,11 @@ app.include_router(delivery.router)
 app.include_router(complaints.router)
 app.include_router(payments.router)
 app.include_router(product_images.router)
+app.include_router(leads.router)
 app.include_router(recommendations.router)
 app.include_router(users.router)
 app.include_router(refunds.router)
 app.include_router(events.router)
-app.include_router(chat.router)
 app.include_router(pickups.router)
 app.include_router(handoff.router)
 app.include_router(ws.router)

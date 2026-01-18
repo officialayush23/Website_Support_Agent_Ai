@@ -1,5 +1,4 @@
 # app/llm/agent.py
-# app/llm/agent.py
 from uuid import UUID
 from app.llm.memory import AgentMemory
 from app.llm.tools import Tools
@@ -11,18 +10,19 @@ from app.schema.enums import UserEventType
 
 CONFIDENCE_THRESHOLD = 0.6
 
-
 async def run_agent(
     *,
     user_id: UUID,
     chat_session_id: UUID,
+    conversation_id: UUID, 
     user_message: str,
 ):
     """
     Runs AI agent for a CHAT SESSION.
-    Support conversation is created ONLY after handoff.
+    Uses 'conversation_id' only for logging AgentActions (buttons).
     """
 
+    # Fix: Ensure ID is string for Redis key
     memory = AgentMemory(chat_session_id=str(chat_session_id))
 
     async with AsyncSessionLocal() as db:
@@ -51,9 +51,10 @@ async def run_agent(
         actions = response.get("actions", [])
         data = response.get("data")
 
+        
         await log_agent_action(
             db=db,
-            conversation_id=None,  # 👈 chat has no conversation
+            conversation_id=conversation_id, 
             action_type=tool_name or "chat",
             payload={
                 "user_message": user_message,

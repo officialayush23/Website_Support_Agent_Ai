@@ -66,3 +66,15 @@ async def product_full(
     db: AsyncSession = Depends(get_db),
 ):
     return await get_product_full(db=db, product_id=product_id)
+
+
+
+@router.get("/", response_model=list[ProductOut])
+async def all_products(
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user, use_cache=False),
+):
+    return await list_products(
+        db=db,
+        user_id=user["user_id"] if user else None,
+    )

@@ -1,3 +1,5 @@
+// frontend/src/pages/Demo/Checkout.jsx
+
 import React, { useEffect, useState, useMemo } from 'react';
 import { apiRequest, analytics } from '../../lib/api';
 import { toast } from 'sonner';

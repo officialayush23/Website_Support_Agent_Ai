@@ -4,7 +4,7 @@ from uuid import UUID, uuid4
 from typing import List, Dict
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, delete
+from sqlalchemy import select, func, delete,text
 from sqlalchemy.orm import selectinload
 
 from app.models.models import (
@@ -177,62 +177,70 @@ async def clear_cart(db: AsyncSession, user_id: UUID):
 # =====================================================
 # AVAILABILITY (FALLBACK FOR UI)
 # =====================================================
-
 async def list_stores_that_can_fulfill_cart(
     db: AsyncSession,
     *,
     user_id: UUID,
-) -> List[Dict]:
+) -> list[dict]:
     """
-    Returns ALL stores that can fulfill the ENTIRE cart.
-    Used when auto-pickup fails so user can choose manually.
+    Returns stores that can fulfill ENTIRE cart,
+    ordered by nearest distance to user.
     """
-    cart = await get_or_create_cart(db, user_id)
 
     res = await db.execute(
-        select(CartItem).where(CartItem.cart_id == cart.id)
+        select(CartItem)
+        .join(Cart)
+        .where(Cart.user_id == user_id)
     )
     items = res.scalars().all()
-
     if not items:
         bad_request("Cart is empty")
 
-    variant_qty = {i.variant_id: i.quantity for i in items}
+    variant_ids = [i.variant_id for i in items]
+    qty_map = {i.variant_id: i.quantity for i in items}
 
-    # Find stores having ALL variants with enough stock
     res = await db.execute(
-        select(StoreInventory.store_id)
-        .where(
-            StoreInventory.variant_id.in_(variant_qty.keys()),
-            StoreInventory.in_hand_stock > 0,
-        )
-        .group_by(StoreInventory.store_id)
-        .having(
-            func.count(StoreInventory.variant_id)
-            == len(variant_qty)
-        )
+        text("""
+        SELECT
+            s.id AS store_id,
+            s.name,
+            ST_Distance(s.location, u.location) AS distance
+        FROM stores s
+        JOIN users u ON u.id = :user_id
+        JOIN store_inventory si ON si.store_id = s.id
+        WHERE s.is_active = true
+          AND si.variant_id = ANY(:variant_ids)
+        GROUP BY s.id, u.location
+        HAVING COUNT(DISTINCT si.variant_id) = :variant_count
+        ORDER BY distance
+        """),
+        {
+            "user_id": user_id,
+            "variant_ids": variant_ids,
+            "variant_count": len(variant_ids),
+        },
     )
 
     stores = []
-    for row in res:
-        store_id = row.store_id
-
+    for row in res.fetchall():
         inv_res = await db.execute(
             select(StoreInventory)
             .where(
-                StoreInventory.store_id == store_id,
-                StoreInventory.variant_id.in_(variant_qty.keys()),
+                StoreInventory.store_id == row.store_id,
+                StoreInventory.variant_id.in_(variant_ids),
             )
         )
-        invs = inv_res.scalars().all()
+        inventories = inv_res.scalars().all()
 
-        if all(inv.in_hand_stock >= variant_qty[inv.variant_id] for inv in invs):
+        if all(inv.in_hand_stock >= qty_map[inv.variant_id] for inv in inventories):
             stores.append({
-                "store_id": store_id,
-                "mode": "pickup",
+                "store_id": row.store_id,
+                "name": row.name,
+                "distance_m": row.distance,
             })
 
     return stores
+
 
 
 # =====================================================
@@ -285,13 +293,15 @@ async def preview_cart_offers(
 # =====================================================
 # CHECKOUT (STRICT + CANONICAL)
 # =====================================================
-
 async def checkout(
     db: AsyncSession,
     *,
     user_id: UUID,
     payload: CheckoutCreate,
 ):
+    # =====================================================
+    # LOAD CART
+    # =====================================================
     cart = await get_or_create_cart(db, user_id)
 
     res = await db.execute(
@@ -304,45 +314,55 @@ async def checkout(
     if not items:
         bad_request("Cart is empty")
 
-    subtotal = sum(
-        float(i.variant.price) * i.quantity for i in items
-    )
+    # deterministic ordering (important for locks)
+    items.sort(key=lambda x: x.variant_id)
 
-    store_id = payload.store_id
+    subtotal = sum(float(i.variant.price) * i.quantity for i in items)
 
-    # ---------------- PICKUP AUTO ASSIGN ----------------
-    if payload.fulfillment_type == fulfillment_type_enum.pickup and not store_id:
-        store = await find_best_store_for_pickup(
-            db=db,
-            user_id=user_id,
-            cart_items=[
-                {"variant_id": i.variant_id, "quantity": i.quantity}
-                for i in items
-            ],
-        )
-        if not store:
-            bad_request("No store can fulfill full cart")
-        store_id = store["store_id"]
+    # =====================================================
+    # FULFILLMENT VALIDATION
+    # =====================================================
+    store_id: UUID | None = None
 
-    # ---------------- OFFERS ----------------
+    if payload.fulfillment_type == FulfillmentType.pickup:
+        # ❗ user MUST choose store explicitly
+        if not payload.store_id:
+            bad_request("store_id is required for pickup")
+
+        store_id = payload.store_id
+
+        # validate store can fulfill ENTIRE cart (lock store rows)
+        for item in items:
+            inv = await db.get(
+                StoreInventory,
+                {
+                    "store_id": store_id,
+                    "variant_id": item.variant_id,
+                },
+                with_for_update=True,
+            )
+            if not inv or inv.in_hand_stock < item.quantity:
+                bad_request("Selected store cannot fulfill cart")
+
+    # =====================================================
+    # OFFERS
+    # =====================================================
     offers = await list_active_offers(db)
     discount_total = max(
-        (evaluate_offer(o, subtotal) for o in offers),
+        (evaluate_offer(o, subtotal=subtotal) for o in offers),
         default=0,
     )
 
-
     total = max(subtotal - discount_total, 0)
-   
 
-
-
-    # ---------------- CREATE ORDER ----------------
+    # =====================================================
+    # CREATE ORDER
+    # =====================================================
     order = Order(
         id=uuid4(),
         user_id=user_id,
         address_id=payload.address_id
-        if payload.fulfillment_type == fulfillment_type_enum.delivery
+        if payload.fulfillment_type == FulfillmentType.delivery
         else None,
         fulfillment_type=payload.fulfillment_type.value,
         store_id=store_id,
@@ -353,15 +373,17 @@ async def checkout(
     )
     db.add(order)
     await db.flush()
+
     await record_event(
-    db=db,
-    user_id=user_id,
-    event_type=UserEventType.checkout_started.value,
-)
+        db=db,
+        user_id=user_id,
+        event_type=user_event_type_enum.checkout_started,
+    )
 
-
-
-    # ---------------- INVENTORY LOCK ----------------
+    # =====================================================
+    # INVENTORY LOCK (ATOMIC + SAFE)
+    # =====================================================
+    # 1️⃣ validate global inventory first
     for item in items:
         gi = (
             await db.execute(
@@ -371,11 +393,12 @@ async def checkout(
             )
         ).scalar_one_or_none()
 
-
-
         if not gi or gi.total_stock - gi.reserved_stock < item.quantity:
             bad_request("Out of stock")
 
+    # 2️⃣ apply mutations only after all checks pass
+    for item in items:
+        gi = await db.get(GlobalInventory, item.variant_id)
         gi.reserved_stock += item.quantity
 
         if payload.fulfillment_type == FulfillmentType.pickup:
@@ -386,12 +409,11 @@ async def checkout(
                     "variant_id": item.variant_id,
                 },
             )
-            if not inv or inv.in_hand_stock < item.quantity:
-                bad_request("Store out of stock")
-
             inv.in_hand_stock -= item.quantity
 
-    # ---------------- ORDER ITEMS ----------------
+    # =====================================================
+    # ORDER ITEMS
+    # =====================================================
     for item in items:
         db.add(
             OrderItem(
@@ -406,12 +428,16 @@ async def checkout(
                     else FulfillmentSource.global_.value
                 ),
                 fulfillment_ref_id=(
-                    store_id if payload.fulfillment_type == fulfillment_type_enum.pickup else item.variant_id
+                    store_id
+                    if payload.fulfillment_type == FulfillmentType.pickup
+                    else item.variant_id
                 ),
             )
         )
 
-    # ---------------- PICKUP ----------------
+    # =====================================================
+    # PICKUP RECORD
+    # =====================================================
     if payload.fulfillment_type == FulfillmentType.pickup:
         db.add(
             Pickup(
@@ -421,11 +447,12 @@ async def checkout(
                 user_id=user_id,
                 amount=total,
                 status=PickupStatus.ready.value,
-
             )
         )
 
-    # ---------------- CLEANUP ----------------
+    # =====================================================
+    # CLEANUP + EVENTS
+    # =====================================================
     await db.execute(
         delete(CartItem).where(CartItem.cart_id == cart.id)
     )
@@ -439,6 +466,9 @@ async def checkout(
 
     await db.commit()
 
+    # =====================================================
+    # RESPONSE
+    # =====================================================
     return {
         "order_id": order.id,
         "status": order.status,

@@ -1,13 +1,17 @@
 # app/core/auth.py
-from fastapi import Depends, HTTPException, status, WebSocket
+from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import jwt
-
+from sqlalchemy.dialects.postgresql import insert
+from app.core.database import AsyncSessionLocal
+from app.models.models import User 
 from app.core.config import settings
+from uuid import UUID
+import asyncio 
 
 security = HTTPBearer()
 
-def get_current_user(
+async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
 ):
     token = credentials.credentials
@@ -26,53 +30,46 @@ def get_current_user(
     user_id = payload.get("sub")
     email = payload.get("email")
 
-    app_role = (
+    # 1. Get the raw role from the token
+    raw_role = (
         payload.get("user_metadata", {}).get("role")
         or payload.get("app_metadata", {}).get("role")
-        or "user"
     )
+
+    # 2. SANITIZE: If token says "user", force it to "customer"
+    if raw_role == "user":
+        app_role = "customer"
+    else:
+        app_role = raw_role or "customer"
 
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid token")
 
+
+    async def _upsert():
+        async with AsyncSessionLocal() as db:
+            stmt = (
+                insert(User)
+                .values(
+                    id=UUID(user_id),
+                    name = payload.get("user_metadata", {}).get("full_name") or email,
+                    role=app_role, 
+                )
+                .on_conflict_do_update(
+                    index_elements=[User.id],
+                    set_={
+                        "name": payload.get("user_metadata", {}).get("full_name") or email,
+                        "role": app_role,
+                    },
+                )
+            )
+            await db.execute(stmt)
+            await db.commit()
+
+    await _upsert()
+
     return {
         "user_id": user_id,
         "email": email,
-        "role": app_role,  # 👈 THIS is what admin checks should use
-    }
-async def get_user_from_ws(ws: WebSocket):
-    token = None
-
-    auth = ws.headers.get("authorization")
-    if auth and auth.startswith("Bearer "):
-        token = auth.split(" ")[1]
-
-    if not token:
-        token = ws.query_params.get("token")
-
-    if not token:
-        print("❌ WS Error: No token provided in query params")
-        await ws.close(code=1008)
-        raise RuntimeError("Missing WS token")
-
-    try:
-        payload = jwt.decode(
-            token,
-            settings.SUPABASE_JWT_SECRET,
-            algorithms=["HS256"],
-            audience="authenticated",
-            leeway=10,
-        )
-    except jwt.PyJWTError as e:
-        await ws.close(code=1008)
-        raise RuntimeError("Invalid WS token")
-
-    return {
-        "user_id": payload["sub"],
-        "email": payload.get("email"),
-        "role": (
-            payload.get("user_metadata", {}).get("role")
-            or payload.get("app_metadata", {}).get("role")
-            or "user"
-        ),
+        "role": app_role,
     }

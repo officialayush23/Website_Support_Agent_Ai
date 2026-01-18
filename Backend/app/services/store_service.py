@@ -10,10 +10,11 @@ from app.models.models import (
     StoreWorkingHour,
     GlobalInventory,
     ProductVariant,
+    InventoryMovement,
 )
 from app.schema.schemas import StoreHourCreate
 from app.utils.api_error import not_found, bad_request
-
+from app.models.enums import fulfillment_target_enum
 
 # =====================================================
 # STORES (POSTGIS SAFE)
@@ -116,9 +117,63 @@ async def is_store_open_now(db: AsyncSession, store_id: UUID) -> bool:
     return res.scalar_one_or_none() is not None
 
 
-# =====================================================
-# INVENTORY (CORRECT MODEL)
-# =====================================================
+async def allocate_inventory_to_store(
+    db: AsyncSession,
+    *,
+    store_id: UUID,
+    variant_id: UUID,
+    quantity: int,
+):
+    gi = await db.get(GlobalInventory, variant_id, with_for_update=True)
+    if not gi:
+        not_found("Global inventory")
+
+    available = gi.total_stock - gi.allocated_stock - gi.reserved_stock
+
+    if quantity > 0 and available < quantity:
+        bad_request("Insufficient global stock")
+
+    inv = await db.get(
+        StoreInventory,
+        {"store_id": store_id, "variant_id": variant_id},
+        with_for_update=True,
+    )
+
+    if not inv:
+        inv = StoreInventory(
+            store_id=store_id,
+            variant_id=variant_id,
+            allocated_stock=0,
+            in_hand_stock=0,
+        )
+        db.add(inv)
+
+    new_allocated = gi.allocated_stock + quantity
+    if new_allocated < 0:
+        bad_request("Global allocated stock cannot go below zero")
+
+    gi.allocated_stock = new_allocated
+
+    inv.allocated_stock += quantity
+    inv.in_hand_stock += quantity
+
+    db.add(
+        InventoryMovement(
+            variant_id=variant_id,
+            source=fulfillment_target_enum.global_inventory,
+            destination=fulfillment_target_enum.store_inventory,
+            quantity=quantity,
+            reason="admin_allocation",
+            reference_type="store",
+            reference_id=store_id,
+        )
+    )
+
+    await db.commit()
+    await db.refresh(inv)
+    return inv
+
+
 
 async def update_store_inventory(
     db: AsyncSession,

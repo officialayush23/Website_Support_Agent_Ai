@@ -1,6 +1,6 @@
 # app/llm/tools.py
 from uuid import UUID
-
+from app.schema.schemas import CheckoutCreate
 
 class Tools:
     def __init__(self, db, user_id: UUID):
@@ -15,6 +15,7 @@ class Tools:
             complaint_service,
             refund_service,
             user_service,
+            recommendation_service
         )
 
         self.product_service = product_service
@@ -24,6 +25,7 @@ class Tools:
         self.complaint_service = complaint_service
         self.refund_service = refund_service
         self.user_service = user_service
+        self.recommendation_service = recommendation_service
 
     async def list_products(self):
         return await self.product_service.list_products(self.db)
@@ -56,14 +58,17 @@ class Tools:
         return {"status": "removed"}
 
     async def create_order(self, address_id: str, fulfillment_type="delivery", store_id=None):
+        # Fix: Convert dict args to Pydantic Model required by service
+        payload = CheckoutCreate(
+            address_id=UUID(address_id),
+            fulfillment_type=fulfillment_type,
+            store_id=UUID(store_id) if store_id else None
+        )
+        
         return await self.order_service.checkout(
             db=self.db,
             user_id=self.user_id,
-            payload={
-                "address_id": UUID(address_id),
-                "fulfillment_type": fulfillment_type,
-                "store_id": UUID(store_id) if store_id else None,
-            },
+            payload=payload, 
         )
 
     async def cancel_order(self, order_id: str):

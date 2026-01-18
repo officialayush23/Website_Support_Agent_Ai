@@ -1,143 +1,151 @@
 import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../../../lib/api';
+import { Tag, Plus, Trash2, Calendar } from 'lucide-react';
 import { toast } from 'sonner';
-import { Tag, Calendar, Plus, Trash2, Percent } from 'lucide-react';
 
 export default function AdminOffers() {
-  const [offers, setOffers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  
-  // Form State
-  const [formData, setFormData] = useState({
-    title: '',
-    description: '',
-    start_date: '',
-    end_date: '',
-    discount_percent: 10 // Storing this in 'rules' for simplicity
-  });
+    const [offers, setOffers] = useState([]);
+    const [isCreating, setIsCreating] = useState(false);
+    
+    // Offer Form
+    const [form, setForm] = useState({
+        title: '',
+        description: '',
+        percentage_off: 10,
+        min_cart_value: 0,
+        starts_at: new Date().toISOString().split('T')[0],
+        ends_at: new Date(Date.now() + 86400000 * 7).toISOString().split('T')[0] // +7 days
+    });
 
-  useEffect(() => {
-    fetchOffers();
-  }, []);
+    useEffect(() => { loadOffers(); }, []);
 
-  const fetchOffers = async () => {
-    try {
-      const data = await apiRequest('/offers/');
-      setOffers(data);
-    } catch (err) {
-      toast.error("Failed to fetch offers");
-    } finally {
-      setLoading(false);
-    }
-  };
+    const loadOffers = async () => {
+        try {
+            const data = await apiRequest('/offers/admin');
+            setOffers(data);
+        } catch (e) { toast.error("Failed to load offers"); }
+    };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      const payload = {
-        title: formData.title,
-        description: formData.description,
-        starts_at: new Date(formData.start_date).toISOString(),
-        ends_at: new Date(formData.end_date).toISOString(),
-        priority: 1,
-        stackable: false,
-        rules: { 
-            discount_type: "percentage", 
-            value: parseInt(formData.discount_percent) 
+    const handleCreate = async (e) => {
+        e.preventDefault();
+        try {
+            await apiRequest('/offers/admin', {
+                method: 'POST',
+                body: JSON.stringify({
+                    ...form,
+                    starts_at: new Date(form.starts_at).toISOString(),
+                    ends_at: new Date(form.ends_at).toISOString(),
+                    rules: {} // Required by schema but can be empty for simple logic
+                })
+            });
+            toast.success("Offer Created");
+            setIsCreating(false);
+            loadOffers();
+        } catch (err) {
+            toast.error("Creation failed");
         }
-      };
+    };
 
-      await apiRequest('/offers/admin', {
-        method: 'POST',
-        body: JSON.stringify(payload)
-      });
+    const handleDeactivate = async (id) => {
+        if(!confirm("Deactivate this offer?")) return;
+        try {
+            await apiRequest(`/offers/admin/${id}`, { method: 'DELETE' });
+            toast.success("Deactivated");
+            loadOffers();
+        } catch (e) { toast.error("Failed"); }
+    };
 
-      toast.success("Offer created successfully");
-      setShowModal(false);
-      fetchOffers();
-      setFormData({ title: '', description: '', start_date: '', end_date: '', discount_percent: 10 });
-    } catch (err) {
-      toast.error("Failed: " + err.message);
-    }
-  };
-
-  return (
-    <div className="space-y-6 animate-in fade-in duration-500">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-gray-900">Active Offers</h1>
-        <button onClick={() => setShowModal(true)} className="bg-gray-900 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-800">
-          <Plus size={18} /> Create Offer
-        </button>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {offers.map((offer) => (
-            <div key={offer.id} className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm relative overflow-hidden">
-                <div className="absolute top-0 right-0 p-4 opacity-10">
-                    <Percent size={100} />
-                </div>
-                <div className="relative z-10">
-                    <h3 className="text-lg font-bold text-gray-900">{offer.title}</h3>
-                    <p className="text-sm text-gray-500 mt-1">{offer.description}</p>
-                    
-                    <div className="mt-4 flex items-center gap-2 text-xs font-medium text-gray-600 bg-gray-50 p-2 rounded-lg w-fit">
-                        <Calendar size={14} />
-                        {new Date(offer.starts_at).toLocaleDateString()} — {new Date(offer.ends_at).toLocaleDateString()}
-                    </div>
-
-                    <div className="mt-4 flex items-center gap-2">
-                        <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold">
-                            {offer.rules?.value || 0}% OFF
-                        </span>
-                        {offer.is_active ? (
-                            <span className="text-blue-600 text-xs flex items-center gap-1"><Tag size={12}/> Active</span>
-                        ) : (
-                            <span className="text-gray-400 text-xs">Inactive</span>
-                        )}
-                    </div>
-                </div>
+    return (
+        <div className="space-y-6">
+            <div className="flex justify-between items-center">
+                <h1 className="text-2xl font-bold dark:text-white">Offers & Discounts</h1>
+                <button 
+                    onClick={() => setIsCreating(true)}
+                    className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+                >
+                    <Plus size={18} /> New Offer
+                </button>
             </div>
-        ))}
-      </div>
 
-      {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/50 backdrop-blur-sm">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 animate-in zoom-in-95">
-                <h2 className="text-xl font-bold mb-4">New Campaign</h2>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase">Title</label>
-                        <input required className="w-full border rounded-lg p-2 mt-1" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} placeholder="Summer Sale" />
-                    </div>
-                    <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase">Description</label>
-                        <input className="w-full border rounded-lg p-2 mt-1" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} placeholder="Get 20% off on all dresses" />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-xs font-bold text-gray-500 uppercase">Discount %</label>
-                            <input type="number" required className="w-full border rounded-lg p-2 mt-1" value={formData.discount_percent} onChange={e => setFormData({...formData, discount_percent: e.target.value})} />
+            {/* Creation Form */}
+            {isCreating && (
+                <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700 animate-in slide-in-from-top-4">
+                    <h3 className="font-bold text-lg mb-4 dark:text-white">Create New Campaign</h3>
+                    <form onSubmit={handleCreate} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-4">
+                            <div>
+                                <label className="text-sm font-medium dark:text-gray-300">Title</label>
+                                <input required className="w-full p-2 border rounded dark:bg-gray-900 dark:border-gray-700 dark:text-white" value={form.title} onChange={e => setForm({...form, title: e.target.value})} placeholder="Summer Sale" />
+                            </div>
+                            <div>
+                                <label className="text-sm font-medium dark:text-gray-300">Description</label>
+                                <input className="w-full p-2 border rounded dark:bg-gray-900 dark:border-gray-700 dark:text-white" value={form.description} onChange={e => setForm({...form, description: e.target.value})} placeholder="Flat 10% off on all items" />
+                            </div>
                         </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-xs font-bold text-gray-500 uppercase">Start Date</label>
-                            <input type="datetime-local" required className="w-full border rounded-lg p-2 mt-1" value={formData.start_date} onChange={e => setFormData({...formData, start_date: e.target.value})} />
+                        <div className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="text-sm font-medium dark:text-gray-300">Percentage Off (%)</label>
+                                    <input type="number" required className="w-full p-2 border rounded dark:bg-gray-900 dark:border-gray-700 dark:text-white" value={form.percentage_off} onChange={e => setForm({...form, percentage_off: e.target.value})} />
+                                </div>
+                                <div>
+                                    <label className="text-sm font-medium dark:text-gray-300">Min Cart Value (₹)</label>
+                                    <input type="number" className="w-full p-2 border rounded dark:bg-gray-900 dark:border-gray-700 dark:text-white" value={form.min_cart_value} onChange={e => setForm({...form, min_cart_value: e.target.value})} />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="text-sm font-medium dark:text-gray-300">Starts</label>
+                                    <input type="date" required className="w-full p-2 border rounded dark:bg-gray-900 dark:border-gray-700 dark:text-white" value={form.starts_at} onChange={e => setForm({...form, starts_at: e.target.value})} />
+                                </div>
+                                <div>
+                                    <label className="text-sm font-medium dark:text-gray-300">Ends</label>
+                                    <input type="date" required className="w-full p-2 border rounded dark:bg-gray-900 dark:border-gray-700 dark:text-white" value={form.ends_at} onChange={e => setForm({...form, ends_at: e.target.value})} />
+                                </div>
+                            </div>
                         </div>
-                        <div>
-                            <label className="block text-xs font-bold text-gray-500 uppercase">End Date</label>
-                            <input type="datetime-local" required className="w-full border rounded-lg p-2 mt-1" value={formData.end_date} onChange={e => setFormData({...formData, end_date: e.target.value})} />
+                        <div className="md:col-span-2 flex justify-end gap-2">
+                            <button type="button" onClick={() => setIsCreating(false)} className="px-4 py-2 text-gray-500">Cancel</button>
+                            <button type="submit" className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">Publish Offer</button>
                         </div>
+                    </form>
+                </div>
+            )}
+
+            {/* List */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {offers.map(offer => (
+                    <div key={offer.id} className="relative bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700 flex justify-between items-start overflow-hidden">
+                        {/* Decorative background */}
+                        <div className="absolute -right-4 -top-4 w-24 h-24 bg-blue-500/10 rounded-full blur-2xl"></div>
+                        
+                        <div>
+                            <div className="flex items-center gap-2 mb-2">
+                                <Tag size={18} className="text-blue-500" />
+                                <h3 className="font-bold text-lg dark:text-white">{offer.title}</h3>
+                                {!offer.is_active && <span className="bg-red-100 text-red-600 text-[10px] px-2 py-0.5 rounded-full">Inactive</span>}
+                            </div>
+                            <p className="text-gray-500 dark:text-gray-400 text-sm">{offer.description}</p>
+                            
+                            <div className="mt-4 flex gap-4 text-xs font-mono text-gray-500">
+                                <div className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">
+                                    {offer.percentage_off ? `${offer.percentage_off}% OFF` : `₹${offer.amount_off} OFF`}
+                                </div>
+                                <div className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded flex items-center gap-1">
+                                    <Calendar size={12} /> {new Date(offer.ends_at).toLocaleDateString()}
+                                </div>
+                            </div>
+                        </div>
+
+                        <button 
+                            onClick={() => handleDeactivate(offer.id)}
+                            className="text-gray-400 hover:text-red-500 transition-colors p-2"
+                        >
+                            <Trash2 size={18} />
+                        </button>
                     </div>
-                    <div className="flex justify-end gap-2 mt-6">
-                        <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 text-gray-600">Cancel</button>
-                        <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Create</button>
-                    </div>
-                </form>
+                ))}
             </div>
         </div>
-      )}
-    </div>
-  );
+    );
 }

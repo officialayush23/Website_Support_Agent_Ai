@@ -1,296 +1,225 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../../../lib/api';
+import { MapPin, Plus, Layers, Search, Store as StoreIcon, CheckCircle, X } from 'lucide-react';
+import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
 import { toast } from 'sonner';
-import { 
-  MapPin, Plus, Store, X, Package, 
-  AlertTriangle, TrendingUp, Loader2, Clock, 
-  ShoppingBag, CheckCircle 
-} from 'lucide-react';
+import L from 'leaflet';
+
+// Leaflet Icon Fix
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+    iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+    iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+});
+
+function LocationPicker({ setLocation }) {
+    useMapEvents({ click(e) { setLocation({ lat: e.latlng.lat, lng: e.latlng.lng }); } });
+    return null;
+}
 
 export default function AdminStores() {
-  const [stores, setStores] = useState([]);
-  const [loading, setLoading] = useState(true);
-  
-  // Modal States
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [selectedStore, setSelectedStore] = useState(null); 
-  const [viewMode, setViewMode] = useState('inventory'); // 'inventory' | 'pickups' | 'hours'
-  
-  // Data for views
-  const [storeInventory, setStoreInventory] = useState([]);
-  const [storePickups, setStorePickups] = useState([]);
-  const [loadingData, setLoadingData] = useState(false);
+    const [stores, setStores] = useState([]);
+    const [view, setView] = useState('list');
+    const [selectedStore, setSelectedStore] = useState(null);
+    const [formData, setFormData] = useState({ name: '', city: '', state: '', lat: 20.5937, lng: 78.9629 });
 
-  // Form State
-  const [newStore, setNewStore] = useState({ name: '', city: '', state: '', latitude: 0, longitude: 0 });
+    useEffect(() => { loadStores(); }, []);
+    const loadStores = async () => { setStores(await apiRequest('/stores/')); };
 
-  useEffect(() => {
-    fetchStores();
-  }, []);
+    const handleCreate = async () => {
+        try {
+            await apiRequest('/stores/admin', {
+                method: 'POST',
+                body: JSON.stringify({
+                    name: formData.name, city: formData.city, state: formData.state,
+                    latitude: formData.lat, longitude: formData.lng
+                })
+            });
+            toast.success("Store Created");
+            setView('list'); loadStores();
+        } catch (err) { toast.error("Failed"); }
+    };
 
-  const fetchStores = async () => {
-    try {
-      const data = await apiRequest('/stores/');
-      setStores(data);
-    } catch (err) {
-      toast.error("Failed to fetch stores");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleCreate = async (e) => {
-    e.preventDefault();
-    try {
-      await apiRequest('/stores/admin', { method: 'POST', body: JSON.stringify(newStore) });
-      toast.success("Store added");
-      setShowAddModal(false);
-      fetchStores();
-      setNewStore({ name: '', city: '', state: '', latitude: 0, longitude: 0 });
-    } catch (err) {
-      toast.error("Failed to create store");
-    }
-  };
-
-  // --- Handlers for Modal Views ---
-  const openStoreModal = (store) => {
-      setSelectedStore(store);
-      setViewMode('inventory');
-      fetchInventory(store.id);
-  };
-
-  const fetchInventory = async (storeId) => {
-      setLoadingData(true);
-      try {
-          const data = await apiRequest(`/stores/${storeId}/inventory`);
-          setStoreInventory(data.items || []);
-      } catch (err) { toast.error("Failed to load inventory"); }
-      finally { setLoadingData(false); }
-  };
-
-  const fetchPickups = async (storeId) => {
-      setLoadingData(true);
-      try {
-          // Uses the specific Pickups router
-          const data = await apiRequest(`/store/pickups/${storeId}`);
-          setStorePickups(data);
-      } catch (err) { toast.error("Failed to load pickups"); }
-      finally { setLoadingData(false); }
-  };
-
-  const handleUpdatePickupStatus = async (pickupId, status) => {
-      try {
-          await apiRequest(`/store/pickups/${pickupId}?status=${status}`, { method: 'PATCH' });
-          toast.success(`Pickup marked as ${status}`);
-          fetchPickups(selectedStore.id); // Refresh
-      } catch (err) {
-          toast.error("Failed to update pickup");
-      }
-  };
-
-  const handleTabChange = (mode) => {
-      setViewMode(mode);
-      if (mode === 'inventory') fetchInventory(selectedStore.id);
-      if (mode === 'pickups') fetchPickups(selectedStore.id);
-  };
-
-  const stats = useMemo(() => {
-      if (!storeInventory.length) return { totalStock: 0, lowStock: 0, value: 0 };
-      return {
-          totalItems: storeInventory.length,
-          totalStock: storeInventory.reduce((acc, item) => acc + item.stock, 0),
-          lowStock: storeInventory.filter(item => item.stock < 10).length,
-      };
-  }, [storeInventory]);
-
-  return (
-    <div className="space-y-6 animate-in fade-in duration-500">
-      <div className="flex justify-between items-center">
-        <div>
-            <h1 className="text-2xl font-bold text-gray-900">Store Locations</h1>
-            <p className="text-sm text-gray-500">Manage outlets, inventory & pickup orders.</p>
-        </div>
-        <button onClick={() => setShowAddModal(true)} className="bg-gray-900 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-800 transition-colors shadow-lg">
-          <Plus size={18} /> Add Store
-        </button>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {stores.map(store => (
-            <div key={store.id} onClick={() => openStoreModal(store)} className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex items-start gap-4 cursor-pointer hover:border-blue-300 hover:shadow-md transition-all group">
-                <div className="bg-indigo-50 p-3 rounded-lg text-indigo-600 group-hover:bg-indigo-100 transition-colors">
-                    <Store size={24} />
-                </div>
-                <div>
-                    <h3 className="font-bold text-gray-900">{store.name}</h3>
-                    <div className="flex items-center gap-1 text-sm text-gray-500 mt-1">
-                        <MapPin size={14} /> {store.city}, {store.state}
-                    </div>
-                    <div className="mt-3 flex gap-2">
-                        <span className="text-xs bg-gray-100 px-2 py-1 rounded text-gray-500">Lat: {store.latitude}</span>
-                        <span className="text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded font-medium">Manage →</span>
-                    </div>
-                </div>
+    return (
+        <div className="space-y-6">
+            <div className="flex justify-between items-center">
+                <h1 className="text-3xl font-bold tracking-tight" style={{ fontFamily: '"Charm", cursive' }}>Store Locations</h1>
+                {view === 'list' ? (
+                    <button onClick={() => setView('create')} className="flex items-center gap-2 bg-black text-white px-4 py-2 rounded-lg hover:bg-gray-800 transition-colors">
+                        <Plus size={18} /> Add Store
+                    </button>
+                ) : (
+                    <button onClick={() => setView('list')} className="text-gray-500 hover:text-black">Cancel</button>
+                )}
             </div>
-        ))}
-      </div>
 
-      {/* --- DETAIL MODAL --- */}
-      {selectedStore && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/60 backdrop-blur-sm">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl h-[85vh] flex flex-col animate-in zoom-in-95 overflow-hidden">
-                
-                {/* Header */}
-                <div className="p-6 border-b border-gray-100 bg-gray-50/50">
-                    <div className="flex justify-between items-center mb-4">
-                        <div>
-                            <h2 className="text-2xl font-bold text-gray-900">{selectedStore.name}</h2>
-                            <div className="flex items-center gap-2 text-sm text-gray-500 mt-1">
-                                <MapPin size={14} /> {selectedStore.city}, {selectedStore.state}
+            {view === 'list' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {stores.map(store => (
+                        <div 
+                            key={store.id} 
+                            onClick={() => setSelectedStore(store)}
+                            className="bg-white p-6 rounded-xl border border-gray-200 cursor-pointer hover:border-black hover:shadow-lg transition-all group"
+                        >
+                            <div className="flex justify-between mb-4">
+                                <div className="p-3 bg-gray-50 rounded-lg group-hover:bg-black group-hover:text-white transition-colors">
+                                    <StoreIcon size={24}/>
+                                </div>
+                                <span className={`px-2 py-1 rounded text-xs h-fit font-medium ${store.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                    {store.is_active ? 'Active' : 'Closed'}
+                                </span>
                             </div>
+                            <h3 className="font-bold text-lg">{store.name}</h3>
+                            <p className="text-gray-500 text-sm">{store.city}, {store.state}</p>
                         </div>
-                        <button onClick={() => setSelectedStore(null)} className="p-2 hover:bg-gray-200 rounded-full transition-colors"><X size={20} /></button>
+                    ))}
+                </div>
+            )}
+
+            {view === 'create' && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <div className="space-y-4 bg-white p-6 rounded-xl border border-gray-200">
+                        <input className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-black outline-none" placeholder="Store Name" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+                        <div className="grid grid-cols-2 gap-4">
+                            <input className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-black outline-none" placeholder="City" value={formData.city} onChange={e => setFormData({...formData, city: e.target.value})} />
+                            <input className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-black outline-none" placeholder="State" value={formData.state} onChange={e => setFormData({...formData, state: e.target.value})} />
+                        </div>
+                        <button onClick={handleCreate} className="w-full bg-black text-white py-3 rounded-lg font-medium hover:bg-gray-800">Create Store</button>
                     </div>
-                    
-                    {/* Tabs */}
-                    <div className="flex gap-6 text-sm font-medium text-gray-500">
-                        <button onClick={() => handleTabChange('inventory')} className={`pb-2 border-b-2 transition-colors ${viewMode === 'inventory' ? 'border-blue-600 text-blue-600' : 'border-transparent hover:text-gray-900'}`}>Inventory</button>
-                        <button onClick={() => handleTabChange('pickups')} className={`pb-2 border-b-2 transition-colors ${viewMode === 'pickups' ? 'border-blue-600 text-blue-600' : 'border-transparent hover:text-gray-900'}`}>Pickup Orders</button>
-                        <button onClick={() => handleTabChange('hours')} className={`pb-2 border-b-2 transition-colors ${viewMode === 'hours' ? 'border-blue-600 text-blue-600' : 'border-transparent hover:text-gray-900'}`}>Hours</button>
+                    <div className="h-[400px] rounded-xl overflow-hidden border border-gray-200 relative">
+                        <MapContainer center={[formData.lat, formData.lng]} zoom={5} style={{ height: '100%', width: '100%' }}>
+                            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                            <Marker position={[formData.lat, formData.lng]} />
+                            <LocationPicker setLocation={loc => setFormData({...formData, ...loc})} />
+                        </MapContainer>
+                        <div className="absolute bottom-4 left-4 bg-white/90 px-3 py-1 rounded text-xs font-medium z-[1000] shadow-sm">
+                            Click map to pin location
+                        </div>
                     </div>
                 </div>
+            )}
 
-                {/* Content */}
-                <div className="flex-1 overflow-y-auto p-6 bg-white">
-                    {loadingData ? (
-                        <div className="h-full flex items-center justify-center"><Loader2 className="w-8 h-8 text-blue-500 animate-spin" /></div>
-                    ) : (
-                        <>
-                            {viewMode === 'inventory' && (
-                                <div className="space-y-8">
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                        <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
-                                            <div className="flex items-center gap-3 mb-2">
-                                                <div className="p-2 bg-white rounded-lg text-blue-600"><Package size={18} /></div>
-                                                <span className="text-sm font-medium text-blue-900">Total Stock</span>
-                                            </div>
-                                            <p className="text-2xl font-bold text-blue-700">{stats.totalStock}</p>
-                                        </div>
-                                        <div className="bg-green-50 p-4 rounded-xl border border-green-100">
-                                            <div className="flex items-center gap-3 mb-2">
-                                                <div className="p-2 bg-white rounded-lg text-green-600"><TrendingUp size={18} /></div>
-                                                <span className="text-sm font-medium text-green-900">Unique Products</span>
-                                            </div>
-                                            <p className="text-2xl font-bold text-green-700">{stats.totalItems}</p>
-                                        </div>
-                                        <div className="bg-orange-50 p-4 rounded-xl border border-orange-100">
-                                            <div className="flex items-center gap-3 mb-2">
-                                                <div className="p-2 bg-white rounded-lg text-orange-600"><AlertTriangle size={18} /></div>
-                                                <span className="text-sm font-medium text-orange-900">Low Stock</span>
-                                            </div>
-                                            <p className="text-2xl font-bold text-orange-700">{stats.lowStock}</p>
-                                        </div>
-                                    </div>
-
-                                    <div className="border border-gray-200 rounded-xl overflow-hidden">
-                                        <table className="min-w-full divide-y divide-gray-200">
-                                            <thead className="bg-gray-50">
-                                                <tr>
-                                                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Product</th>
-                                                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Stock</th>
-                                                    <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Status</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="bg-white divide-y divide-gray-200">
-                                                {storeInventory.map((item, idx) => (
-                                                    <tr key={idx} className="hover:bg-gray-50">
-                                                        <td className="px-6 py-4 text-sm font-medium text-gray-900">{item.product_name}</td>
-                                                        <td className="px-6 py-4 text-sm font-bold text-gray-900">{item.stock}</td>
-                                                        <td className="px-6 py-4 text-right">
-                                                            {item.stock === 0 ? <span className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded">Out of Stock</span> : <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">Healthy</span>}
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            )}
-
-                            {viewMode === 'pickups' && (
-                                <div className="space-y-4">
-                                    <h3 className="font-bold text-gray-900">Active Pickups</h3>
-                                    {storePickups.length === 0 ? <p className="text-gray-500 border-2 border-dashed p-8 rounded-xl text-center">No active pickup requests.</p> : (
-                                        storePickups.map(pickup => (
-                                            <div key={pickup.id} className="p-4 border rounded-xl flex justify-between items-center hover:bg-gray-50 transition-colors">
-                                                <div className="flex items-center gap-4">
-                                                    <div className="bg-blue-50 p-2 rounded-lg text-blue-600"><ShoppingBag size={20} /></div>
-                                                    <div>
-                                                        <div className="flex items-center gap-2">
-                                                            <p className="font-bold text-gray-900">Pickup #{pickup.id.slice(0,8)}</p>
-                                                            <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full font-bold uppercase">{pickup.status}</span>
-                                                        </div>
-                                                        <p className="text-sm text-gray-500">Order: {pickup.order_id.slice(0,8)}</p>
-                                                    </div>
-                                                </div>
-                                                <div className="flex items-center gap-4">
-                                                    {pickup.status === 'ready' && (
-                                                        <button 
-                                                            onClick={() => handleUpdatePickupStatus(pickup.id, 'picked_up')}
-                                                            className="bg-gray-900 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-black transition-colors flex items-center gap-1"
-                                                        >
-                                                            <CheckCircle size={12} /> Mark as Picked Up
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        ))
-                                    )}
-                                </div>
-                            )}
-
-                            {viewMode === 'hours' && (
-                                <div className="text-center py-20 text-gray-500">
-                                    <Clock className="mx-auto h-12 w-12 mb-4 opacity-20"/>
-                                    <p className="text-lg">Working Hours Configuration</p>
-                                    <p className="text-sm">Manage opening and closing times for this location.</p>
-                                    <button className="mt-4 text-blue-600 font-medium hover:underline">Coming Soon</button>
-                                </div>
-                            )}
-                        </>
-                    )}
+            {/* Store Dashboard Popover */}
+            {selectedStore && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                    <div className="bg-white w-full max-w-4xl h-[80vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95">
+                        <div className="p-6 border-b flex justify-between items-center bg-gray-50">
+                            <div>
+                                <h2 className="text-2xl font-bold font-charm" style={{ fontFamily: '"Charm", cursive' }}>{selectedStore.name}</h2>
+                                <p className="text-sm text-gray-500">{selectedStore.city} • Dashboard</p>
+                            </div>
+                            <button onClick={() => setSelectedStore(null)} className="p-2 hover:bg-gray-200 rounded-full"><X /></button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-0">
+                            <StoreDashboardTabs store={selectedStore} />
+                        </div>
+                    </div>
                 </div>
+            )}
+        </div>
+    );
+}
+
+function StoreDashboardTabs({ store }) {
+    const [tab, setTab] = useState('inventory');
+    const [inventory, setInventory] = useState([]);
+    const [pickups, setPickups] = useState([]);
+    const [search, setSearch] = useState('');
+
+    useEffect(() => {
+        if(tab === 'inventory') apiRequest(`/stores/${store.id}/inventory`).then(res => setInventory(res.items));
+        if(tab === 'pickups') apiRequest(`/pickups/store/${store.id}`).then(setPickups);
+    }, [tab, store.id]);
+
+    const handleAllocate = async (variantId, qty) => {
+        try {
+            await apiRequest(`/stores/${store.id}/allocate`, {
+                method: 'POST',
+                body: JSON.stringify({ variant_id: variantId, quantity: parseInt(qty) })
+            });
+            toast.success("Allocated!");
+            // Refresh
+            apiRequest(`/stores/${store.id}/inventory`).then(res => setInventory(res.items));
+        } catch (e) { toast.error("Allocation Failed"); }
+    };
+
+    const handlePickupStatus = async (id, status) => {
+        try {
+            await apiRequest(`/pickups/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) });
+            toast.success("Updated");
+            setPickups(prev => prev.map(p => p.id === id ? { ...p, status } : p));
+        } catch (e) { toast.error("Failed"); }
+    };
+
+    return (
+        <div>
+            <div className="flex border-b">
+                <button onClick={() => setTab('inventory')} className={`flex-1 py-4 text-sm font-medium ${tab === 'inventory' ? 'border-b-2 border-black text-black' : 'text-gray-500'}`}>Inventory Allocation</button>
+                <button onClick={() => setTab('pickups')} className={`flex-1 py-4 text-sm font-medium ${tab === 'pickups' ? 'border-b-2 border-black text-black' : 'text-gray-500'}`}>Pickups & Orders</button>
             </div>
-          </div>
-      )}
 
-      {/* --- ADD STORE MODAL (Same as previous) --- */}
-      {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/50 backdrop-blur-sm">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg p-6 animate-in zoom-in-95">
-                <h2 className="text-xl font-bold mb-4">Add Store Location</h2>
-                <form onSubmit={handleCreate} className="space-y-4">
-                    {/* ... form fields for new store ... */}
-                    <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase">Store Name</label>
-                        <input required className="w-full border rounded-lg p-2 mt-1" value={newStore.name} onChange={e => setNewStore({...newStore, name: e.target.value})} placeholder="Downtown Flagship" />
+            <div className="p-6">
+                {tab === 'inventory' && (
+                    <>
+                        <div className="mb-4 relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
+                            <input 
+                                placeholder="Search SKU..." 
+                                className="w-full pl-10 p-2 border rounded-lg focus:ring-1 focus:ring-black outline-none"
+                                value={search} onChange={e => setSearch(e.target.value)}
+                            />
+                        </div>
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-gray-50 text-gray-500">
+                                <tr><th className="p-3 rounded-l-lg">SKU</th><th className="p-3">In Store</th><th className="p-3">Allocated</th><th className="p-3 rounded-r-lg">Allocate (+/-)</th></tr>
+                            </thead>
+                            <tbody className="divide-y">
+                                {inventory.filter(i => i.sku.toLowerCase().includes(search.toLowerCase())).map(item => (
+                                    <tr key={item.variant_id}>
+                                        <td className="p-3 font-mono">{item.sku}</td>
+                                        <td className="p-3 font-bold text-green-600">{item.in_hand_stock}</td>
+                                        <td className="p-3">{item.allocated_stock}</td>
+                                        <td className="p-3">
+                                            <input 
+                                                type="number" 
+                                                placeholder="0" 
+                                                className="w-20 p-1 border rounded text-center focus:ring-1 focus:ring-black outline-none"
+                                                onKeyDown={(e) => { if(e.key === 'Enter') { handleAllocate(item.variant_id, e.target.value); e.target.value = ''; } }}
+                                            />
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </>
+                )}
+
+                {tab === 'pickups' && (
+                    <div className="space-y-3">
+                        {pickups.map(p => (
+                            <div key={p.id} className="flex justify-between items-center p-4 border rounded-xl hover:bg-gray-50">
+                                <div>
+                                    <p className="font-bold">Order #{p.order_id.slice(0,8)}</p>
+                                    <p className="text-xs text-gray-500">₹{p.amount} • {new Date(p.created_at).toLocaleDateString()}</p>
+                                </div>
+                                <div className="flex gap-2">
+                                    {p.status === 'ready' && (
+                                        <button onClick={() => handlePickupStatus(p.id, 'picked_up')} className="bg-black text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-gray-800">
+                                            Mark Picked Up
+                                        </button>
+                                    )}
+                                    <span className={`px-2 py-1 rounded text-xs border ${p.status === 'picked_up' ? 'bg-green-50 border-green-200 text-green-700' : 'bg-gray-100 border-gray-200'}`}>
+                                        {p.status}
+                                    </span>
+                                </div>
+                            </div>
+                        ))}
+                        {pickups.length === 0 && <p className="text-center text-gray-400 py-10">No active pickups</p>}
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <input placeholder="City" className="border p-2 rounded" value={newStore.city} onChange={e => setNewStore({...newStore, city: e.target.value})} />
-                        <input placeholder="State" className="border p-2 rounded" value={newStore.state} onChange={e => setNewStore({...newStore, state: e.target.value})} />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <input placeholder="Latitude" type="number" step="any" className="border p-2 rounded" value={newStore.latitude} onChange={e => setNewStore({...newStore, latitude: parseFloat(e.target.value)})} />
-                        <input placeholder="Longitude" type="number" step="any" className="border p-2 rounded" value={newStore.longitude} onChange={e => setNewStore({...newStore, longitude: parseFloat(e.target.value)})} />
-                    </div>
-                    <div className="flex justify-end gap-2 mt-6">
-                        <button type="button" onClick={() => setShowAddModal(false)} className="px-4 py-2 text-gray-600">Cancel</button>
-                        <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg">Create</button>
-                    </div>
-                </form>
+                )}
             </div>
         </div>
-      )}
-    </div>
-  );
+    );
 }

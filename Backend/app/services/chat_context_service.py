@@ -2,7 +2,7 @@
 from uuid import UUID, uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.models import ChatContext, Embedding
-from app.services.embedding_service import embed_text
+from app.services.embedding_service import generate_text_embedding as embed_text
 
 
 async def summarize_chat_session(

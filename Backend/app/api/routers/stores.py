@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
-
+from app.schema.schemas import StockAllocation
 from app.core.database import get_db
 from app.core.auth import get_current_user
 from app.utils.api_error import forbidden
@@ -27,7 +27,7 @@ from app.schema.schemas import (
     InventoryUpdate,
 
 )
-
+from app.services.store_service import allocate_inventory_to_store
 router = APIRouter(prefix="/stores", tags=["Stores"])
 
 
@@ -97,6 +97,23 @@ async def set_hours(
     await set_store_hours(db, store_id, payload)
     return {"status": "updated"}
 
+ # Positive to add to store, Negative to return to global
+@router.post("/{store_id}/allocate")
+async def allocate_stock_endpoint(
+    store_id: UUID,
+    payload: StockAllocation,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    if user["role"] != "admin":
+        forbidden()
+
+    return await allocate_inventory_to_store(
+        db=db,
+        store_id=store_id,
+        variant_id=payload.variant_id,
+        quantity=payload.quantity,
+    )
 
 @router.get("/{store_id}/hours", response_model=list[StoreHourOut])
 async def get_hours(

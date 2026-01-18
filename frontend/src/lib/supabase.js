@@ -1,3 +1,5 @@
+// frontend/src/lib/supabase.js
+
 import { createClient } from '@supabase/supabase-js';
 
 // Access env vars using Vite's import.meta.env

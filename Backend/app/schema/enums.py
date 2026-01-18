@@ -81,3 +81,7 @@ class UserEventType(str, Enum):
 
     complaint_created = "complaint_created"
     chat_message = "chat_message"
+
+class FulfillmentTargetEnum(str, Enum):
+    global_inventory = "global_inventory"
+    store_inventory = "store_inventory"
