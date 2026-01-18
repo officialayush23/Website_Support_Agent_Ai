@@ -7,7 +7,7 @@ from app.api.routers import (
     carts,
     orders,
     support,
-    admin,payments,stores,offers,delivery,complaints,product_images,recommendations,users,events,refunds,pickups,recommendations,handoff,ws,leads
+    admin,payments,stores,offers,delivery,complaints,product_images,recommendations,users,events,refunds,pickups,recommendations,handoff,ws,leads,
     
 )
 app = FastAPI(title="Website Support Agent")

@@ -48,66 +48,51 @@ async def view_cart(
 # =====================================================
 # ADD ITEM (VARIANT BASED)
 # =====================================================
-
 @router.post("/items")
 async def add_to_cart(
     payload: CartItemCreate,
     db: AsyncSession = Depends(get_db),
     user=Depends(get_current_user),
 ):
-    """
-    Adds a variant to cart.
-    """
     await add_item(
         db=db,
         user_id=user["user_id"],
-        variant_id=payload.variant_id,
+        product_id=payload.product_id,
         quantity=payload.quantity,
     )
     return {"status": "added"}
 
 
-# =====================================================
-# UPDATE ITEM
-# =====================================================
-
-@router.patch("/items/{variant_id}")
+@router.patch("/items/{product_id}")
 async def update_cart_item(
-    variant_id: UUID,
+    product_id: UUID,
     payload: CartItemUpdate,
     db: AsyncSession = Depends(get_db),
     user=Depends(get_current_user),
 ):
-    """
-    Update quantity.
-    quantity = 0 → remove.
-    """
     await update_item(
         db=db,
         user_id=user["user_id"],
-        variant_id=variant_id,
+        product_id=product_id,
         quantity=payload.quantity,
     )
     return {"status": "updated"}
 
 
-# =====================================================
-# REMOVE ITEM (EXPLICIT)
-# =====================================================
-
-@router.delete("/items/{variant_id}")
+@router.delete("/items/{product_id}")
 async def remove_cart_item(
-    variant_id: UUID,
+    product_id: UUID,
     db: AsyncSession = Depends(get_db),
     user=Depends(get_current_user),
 ):
     await update_item(
         db=db,
         user_id=user["user_id"],
-        variant_id=variant_id,
+        product_id=product_id,
         quantity=0,
     )
     return {"status": "removed"}
+
 
 
 # =====================================================

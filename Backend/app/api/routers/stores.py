@@ -1,12 +1,14 @@
 # app/api/routers/stores.py
+# app/api/routers/stores.py
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
-from app.schema.schemas import StockAllocation
+
 from app.core.database import get_db
 from app.core.auth import get_current_user
 from app.utils.api_error import forbidden
-from app.services.store_service import get_store_hours
+
 from app.services.store_service import (
     list_stores,
     create_store,
@@ -15,8 +17,10 @@ from app.services.store_service import (
     update_store_inventory,
     get_store_inventory,
     set_store_hours,
+    allocate_inventory_to_store,
+    get_store_hours,
 )
-from app.models.models import Store
+
 from app.schema.schemas import (
     StoreCreate,
     StoreOut,
@@ -25,9 +29,9 @@ from app.schema.schemas import (
     GlobalStockUpdate,
     StoreInventoryOut,
     InventoryUpdate,
-
+    StockAllocation,
 )
-from app.services.store_service import allocate_inventory_to_store
+
 router = APIRouter(prefix="/stores", tags=["Stores"])
 
 
@@ -36,7 +40,9 @@ router = APIRouter(prefix="/stores", tags=["Stores"])
 # =====================================================
 
 @router.get("/", response_model=list[StoreOut])
-async def list_(db: AsyncSession = Depends(get_db)):
+async def list_(
+    db: AsyncSession = Depends(get_db),
+):
     return await list_stores(db)
 
 
@@ -48,11 +54,12 @@ async def create(
 ):
     if user["role"] != "admin":
         forbidden()
+
     return await create_store(db, payload.model_dump())
 
 
 # =====================================================
-# INVENTORY
+# INVENTORY (PRODUCT-BASED)
 # =====================================================
 
 @router.patch("/admin/inventory", response_model=StoreInventoryOut)
@@ -67,7 +74,7 @@ async def update_inventory(
     return await update_store_inventory(
         db=db,
         store_id=payload.store_id,
-        variant_id=payload.variant_id,
+        product_id=payload.product_id,
         allocated_stock=payload.allocated_stock,
     )
 
@@ -97,8 +104,20 @@ async def set_hours(
     await set_store_hours(db, store_id, payload)
     return {"status": "updated"}
 
- # Positive to add to store, Negative to return to global
-@router.post("/{store_id}/allocate")
+
+@router.get("/{store_id}/hours", response_model=list[StoreHourOut])
+async def get_hours(
+    store_id: UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    return await get_store_hours(db, store_id)
+
+
+# =====================================================
+# ALLOCATION (GLOBAL → STORE)
+# =====================================================
+
+@router.post("/{store_id}/allocate", response_model=StoreInventoryOut)
 async def allocate_stock_endpoint(
     store_id: UUID,
     payload: StockAllocation,
@@ -111,16 +130,9 @@ async def allocate_stock_endpoint(
     return await allocate_inventory_to_store(
         db=db,
         store_id=store_id,
-        variant_id=payload.variant_id,
+        product_id=payload.product_id,
         quantity=payload.quantity,
     )
-
-@router.get("/{store_id}/hours", response_model=list[StoreHourOut])
-async def get_hours(
-    store_id: UUID,
-    db: AsyncSession = Depends(get_db),
-):
-    return await get_store_hours(db, store_id)
 
 
 # =====================================================
@@ -149,8 +161,7 @@ async def update_global_stock_api(
 
     await update_global_stock(
         db=db,
-        variant_id=payload.variant_id,
+        product_id=payload.product_id,
         total_stock=payload.total_stock,
     )
     return {"status": "updated"}
-

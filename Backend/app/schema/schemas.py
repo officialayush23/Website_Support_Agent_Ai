@@ -82,7 +82,9 @@ class ProductVariantCreate(BaseModel):
     product_id: UUID
     sku: str
     price: float
-    attributes: Optional[Dict[str, Any]] = None
+    model_config = {
+        "extra": "forbid"  # 🚨 CRITICAL
+    }
 
 
 class ProductVariantOut(BaseModel):
@@ -445,27 +447,30 @@ class StockAllocation(BaseModel):
 
 class AttributeDefinitionCreate(BaseModel):
     name: str
-    description: Optional[str] = None
-    value_type: str = "string"  # string | number | enum
-    allowed_values: Optional[list[str]] = None
+    input_type: Literal["text", "number", "enum", "boolean"]
+    allowed_values: list[str] | None = None
     is_required: bool = False
-    is_active: bool = True
+    applies_to: Literal["variant", "product"] = "variant"
+
 
 
 class AttributeDefinitionUpdate(BaseModel):
-    description: Optional[str] = None
-    value_type: Optional[str] = None
+    name: str
+    input_type: Literal["text", "number", "enum", "boolean"]
     allowed_values: Optional[list[str]] = None
     is_required: Optional[bool] = None
-    is_active: Optional[bool] = None
+    applies_to: Literal["variant", "product"] = "variant"
+    
 
-
-class AttributeDefinitionOut(AttributeDefinitionCreate):
+class AttributeDefinitionOut(BaseModel):
     id: UUID
+    name: str
+    input_type: str
+    allowed_values: list[str] | None
+    is_required: bool
+    applies_to: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True
 
 class ProductStockOverviewOut(BaseModel):
     product_id: UUID

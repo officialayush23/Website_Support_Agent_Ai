@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, delete
 from uuid import UUID
 
-from app.models.models import ChatContext, UserEvent, Embedding, Product
+from app.models.models import ChatContext, UserEvent, Embedding, Product,ChatSession
 from app.services.embedding_service import generate_text_embedding, store_embedding
 
 
@@ -21,9 +21,8 @@ async def rebuild_user_embedding(
     # 1. Last chat summaries
     res_ctx = await db.execute(
         select(ChatContext.summary)
-        .where(ChatContext.chat_session_id.in_(
-            select(ChatContext.chat_session_id)
-        ))
+        .join(ChatSession, ChatSession.id == ChatContext.chat_session_id)
+        .where(ChatSession.user_id == user_id)
         .order_by(desc(ChatContext.created_at))
         .limit(5)
     )

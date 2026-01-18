@@ -1,6 +1,9 @@
 from uuid import uuid4
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.sql import func
+from sqlalchemy import DateTime
+from sqlalchemy.dialects.postgresql import ARRAY
+
 from sqlalchemy.orm import relationship
 from geoalchemy2 import Geography
 from pgvector.sqlalchemy import Vector
@@ -26,23 +29,18 @@ class User(Base):
     preferences = Column(JSONB, server_default="'{}'::jsonb")
 
     location = Column(Geography("POINT", srid=4326))
-    is_payment_agent_enabled = Column(Boolean, server_default="false")
     location_updated_at = Column(TIMESTAMP)
 
+    is_payment_agent_enabled = Column(Boolean, server_default="false")
     created_at = Column(TIMESTAMP, server_default=func.now())
 
 class UserPreference(Base):
     __tablename__ = "user_preferences"
 
-    user_id = Column(
-        UUID,
-        ForeignKey("users.id", ondelete="CASCADE"),
-        primary_key=True,
-    )
-
-    preferred_categories = Column(JSONB, server_default="'[]'::jsonb")
+    user_id = Column(UUID, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    preferred_categories = Column(JSONB, server_default="'{}'::jsonb")
     preferred_price_range = Column(JSONB, server_default="'{}'::jsonb")
-    preferred_brands = Column(JSONB, server_default="'[]'::jsonb")
+    preferred_brands = Column(JSONB, server_default="'{}'::jsonb")
 
     last_updated_at = Column(TIMESTAMP, server_default=func.now())
 
@@ -69,7 +67,6 @@ class Address(Base):
 
 
 # ================= PRODUCTS =================
-
 class Product(Base):
     __tablename__ = "products"
 
@@ -78,26 +75,15 @@ class Product(Base):
     description = Column(Text)
     category = Column(Text)
 
+    price = Column(Numeric, nullable=False)
+    rating = Column(Numeric, server_default="0")
+    reviews = Column(Text)
+    images = Column(ARRAY(Text), server_default="{}")
+
     is_active = Column(Boolean, server_default="true")
     created_at = Column(TIMESTAMP, server_default=func.now())
 
-    variants = relationship("ProductVariant", back_populates="product")
 
-
-class ProductVariant(Base):
-    __tablename__ = "product_variants"
-
-    id = Column(UUID, primary_key=True, default=uuid4)
-    product_id = Column(UUID, ForeignKey("products.id", ondelete="CASCADE"))
-
-    sku = Column(Text, unique=True)
-    price = Column(Numeric, nullable=False)
-    attributes = Column(JSONB)
-
-    created_at = Column(TIMESTAMP, server_default=func.now())
-
-    product = relationship("Product", back_populates="variants")
-    images = relationship("ProductImage", back_populates="variant")
 
 
 class ProductImage(Base):
@@ -115,12 +101,16 @@ class ProductImage(Base):
 
 
 # ================= INVENTORY =================
-
 class GlobalInventory(Base):
     __tablename__ = "global_inventory"
 
-    variant_id = Column(UUID, ForeignKey("product_variants.id", ondelete="CASCADE"), primary_key=True)
-    total_stock = Column(Integer, nullable=False)
+    product_id = Column(
+        UUID,
+        ForeignKey("products.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+
+    total_stock = Column(Integer, nullable=False, server_default="0")
     allocated_stock = Column(Integer, nullable=False, server_default="0")
     reserved_stock = Column(Integer, nullable=False, server_default="0")
 
@@ -135,15 +125,22 @@ class OrderStatusHistory(Base):
     created_at = Column(TIMESTAMP, server_default=func.now()) 
 
     order = relationship("Order", back_populates="status_history")
-
 class StoreInventory(Base):
     __tablename__ = "store_inventory"
 
-    store_id = Column(UUID, ForeignKey("stores.id", ondelete="CASCADE"), primary_key=True)
-    variant_id = Column(UUID, ForeignKey("product_variants.id", ondelete="CASCADE"), primary_key=True)
+    store_id = Column(
+        UUID,
+        ForeignKey("stores.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    product_id = Column(
+        UUID,
+        ForeignKey("products.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
 
-    allocated_stock = Column(Integer, nullable=False)
-    in_hand_stock = Column(Integer, nullable=False)
+    allocated_stock = Column(Integer, nullable=False, server_default="0")
+    in_hand_stock = Column(Integer, nullable=False, server_default="0")
 
     updated_at = Column(TIMESTAMP, server_default=func.now())
 
@@ -193,15 +190,21 @@ class Cart(Base):
 class CartItem(Base):
     __tablename__ = "cart_items"
 
-    cart_id = Column(UUID, ForeignKey("carts.id", ondelete="CASCADE"), primary_key=True)
-    variant_id = Column(UUID, ForeignKey("product_variants.id"), primary_key=True)
-    quantity = Column(Integer, nullable=False)
+    cart_id = Column(
+        UUID,
+        ForeignKey("carts.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    product_id = Column(
+        UUID,
+        ForeignKey("products.id"),
+        primary_key=True,
+    )
 
-    variant = relationship("ProductVariant")
+    quantity = Column(Integer, nullable=False)
 
 
 # ================= ORDERS =================
-
 class Order(Base):
     __tablename__ = "orders"
 
@@ -210,9 +213,7 @@ class Order(Base):
     address_id = Column(UUID, ForeignKey("addresses.id"))
     store_id = Column(UUID, ForeignKey("stores.id"))
 
-    status = Column(order_status_enum, server_default="pending")
     fulfillment_type = Column(fulfillment_type_enum, server_default="delivery")
-    status_history = relationship("OrderStatusHistory", back_populates="order", cascade="all, delete")
 
     subtotal = Column(Numeric)
     discount_total = Column(Numeric, server_default="0")
@@ -229,15 +230,11 @@ class OrderItem(Base):
 
     id = Column(UUID, primary_key=True, default=uuid4)
     order_id = Column(UUID, ForeignKey("orders.id", ondelete="CASCADE"))
-    variant_id = Column(UUID, ForeignKey("product_variants.id"))
+    product_id = Column(UUID, ForeignKey("products.id"))
 
-    quantity = Column(Integer)
-    price = Column(Numeric)
+    quantity = Column(Integer, nullable=False)
+    price = Column(Numeric, nullable=False)
 
-    fulfillment_source = Column(fulfillment_source_enum, nullable=False)
-    fulfillment_ref_id = Column(UUID, nullable=False)
-
-    variant = relationship("ProductVariant")
 
 
 # ================= PAYMENTS =================
@@ -432,7 +429,7 @@ class Embedding(Base):
     __tablename__ = "embeddings"
 
     id = Column(UUID, primary_key=True, default=uuid4)
-    source_type = Column(Text)
+    Column(embedding_source_enum, nullable=False)
     source_id = Column(UUID)
 
     embedding = Column(Vector(768))
@@ -449,7 +446,7 @@ class UserEvent(Base):
     id = Column(UUID, primary_key=True, default=uuid4)
     user_id = Column(UUID, ForeignKey("users.id", ondelete="CASCADE"))
 
-    event_type = Column(user_event_type_enum, nullable=False)
+    event_type = Column(Text, nullable=False)
 
     product_id = Column(UUID, ForeignKey("products.id"))
     variant_id = Column(UUID, ForeignKey("product_variants.id"))
@@ -480,61 +477,35 @@ class Lead(Base):
     status = Column(Text, server_default="new")
     created_at = Column(TIMESTAMP, server_default=func.now())
 
-
 class AttributeDefinition(Base):
     __tablename__ = "attribute_definitions"
 
-    id = Column(UUID, primary_key=True, default=uuid4)
+    id = Column(UUID(as_uuid=True), primary_key=True)
+    name = Column(String, nullable=False)
 
-    name = Column(String, nullable=False, unique=True)
-    description = Column(Text)
+    input_type = Column(String, nullable=False)   # ← was value_type
+    allowed_values = Column(ARRAY(String), nullable=True)
 
-    # simple typing for now (extensible later)
-    value_type = Column(
-        String,
-        nullable=False,
-        server_default="string",  # string | number | enum
-    )
+    is_required = Column(Boolean, default=False)
+    applies_to = Column(String, default="variant")
 
-    # enum-style allowed values
-    allowed_values = Column(JSONB)  # ["S", "M", "L"]
+    created_at = Column(DateTime, server_default=func.now())
 
-    is_required = Column(Boolean, server_default="false")
-    is_active = Column(Boolean, server_default="true")
-
-    created_at = Column(TIMESTAMP, server_default=func.now())
 from app.models.enums import fulfillment_target_enum
-
 
 class InventoryMovement(Base):
     __tablename__ = "inventory_movements"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    id = Column(UUID, primary_key=True, default=uuid4)
+    product_id = Column(UUID, ForeignKey("products.id"), nullable=False)
 
-    variant_id = Column(
-        UUID(as_uuid=True),
-        ForeignKey("product_variants.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-
-    source = Column(
-        fulfillment_target_enum,
-        nullable=True,
-    )
-
-    destination = Column(
-        fulfillment_target_enum,
-        nullable=True,
-    )
+    source = Column(Text)
+    destination = Column(Text)
 
     quantity = Column(Integer, nullable=False)
+    reason = Column(Text)
 
-    reason = Column(Text, nullable=False)
+    reference_type = Column(Text)
+    reference_id = Column(UUID)
 
-    reference_type = Column(Text, nullable=True)
-    reference_id = Column(UUID(as_uuid=True), nullable=True)
-
-    created_at = Column(
-        default=datetime.utcnow,
-        nullable=False,
-    )
+    created_at = Column(TIMESTAMP, server_default=func.now())

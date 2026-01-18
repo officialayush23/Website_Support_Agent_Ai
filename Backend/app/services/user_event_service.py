@@ -1,42 +1,33 @@
-# app/services/user_event_service.py
-
 from uuid import UUID, uuid4
 from typing import Union
-
+from sqlalchemy import Enum
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 
 from app.models.models import UserEvent, UserPreference, User
-from app.models.enums import user_event_type_enum
+from app.schema.enums import UserEventType
 from app.services.user_preference_llm_service import generate_preferences_from_events
 from app.services.embedding_service import generate_text_embedding, store_embedding
 from app.services.user_embedding_service import rebuild_user_embedding
 
+
 # =====================================================
 # EVENT TRACKING (CANONICAL)
 # =====================================================
-
 async def record_event(
     *,
     db: AsyncSession,
     user_id: UUID,
-    event_type: Union[user_event_type_enum, str],
+    event_type: str,
     product_id: UUID | None = None,
     variant_id: UUID | None = None,
     order_id: UUID | None = None,
     metadata: dict | None = None,
 ):
-    # normalize enum → string
-    event_type_value = (
-        event_type.value
-        if isinstance(event_type, user_event_type_enum)
-        else str(event_type)
-    )
-
     event = UserEvent(
         id=uuid4(),
         user_id=user_id,
-        event_type=event_type_value,
+        event_type=event_type,  # ✅ plain string
         product_id=product_id,
         variant_id=variant_id,
         order_id=order_id,
@@ -46,8 +37,8 @@ async def record_event(
     db.add(event)
     await db.commit()
 
-    # async-safe recompute
     await recompute_user_preferences(db, user_id)
+
 
 
 # =====================================================
@@ -67,7 +58,7 @@ async def recompute_user_preferences(db: AsyncSession, user_id: UUID):
             "event_type": e.event_type,
             "product_id": str(e.product_id) if e.product_id else None,
             "variant_id": str(e.variant_id) if e.variant_id else None,
-            "metadata": e.metadata,
+            "metadata": e.event_metadata,
         }
         for e in res.scalars()
     ]
@@ -100,7 +91,7 @@ async def recompute_user_preferences(db: AsyncSession, user_id: UUID):
     emb = await generate_text_embedding(str(inferred))
     await store_embedding(
         db=db,
-        source_type="user_pref",
+        source_type="user",
         source_id=user_id,
         embedding=emb,
     )

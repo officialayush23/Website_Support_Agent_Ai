@@ -24,8 +24,8 @@ async def summarize_chat_session(
 
     emb = Embedding(
         id=uuid4(),
-        source_type="chat_session",
-        source_id=chat_session_id,
+        source_type="chat_summary",
+        source_id=ctx.id,
         embedding=await embed_text(summary),
     )
     db.add(emb)

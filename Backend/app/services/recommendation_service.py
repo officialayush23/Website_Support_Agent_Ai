@@ -1,11 +1,11 @@
 # app/services/recommendation_service.py
+# app/services/recommendation_service.py
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
-from sqlalchemy.orm import selectinload
 from uuid import UUID
 
-from app.models.models import Product, ProductVariant, Embedding
+from app.models.models import Product, Embedding
 
 
 async def recommend_for_user(
@@ -14,7 +14,9 @@ async def recommend_for_user(
     user_id: UUID,
     limit: int = 10,
 ):
-    # 1. Fetch user embedding
+    # =================================================
+    # 1. Fetch latest user embedding
+    # =================================================
     res_user = await db.execute(
         select(Embedding)
         .where(
@@ -26,7 +28,9 @@ async def recommend_for_user(
     )
     user_emb = res_user.scalar_one_or_none()
 
-    # 2. If no user embedding → fallback
+    # =================================================
+    # 2. Fallback: no personalization yet
+    # =================================================
     if not user_emb:
         res = await db.execute(
             select(Product)
@@ -34,15 +38,18 @@ async def recommend_for_user(
             .order_by(Product.created_at.desc())
             .limit(limit)
         )
-        return res.scalars().unique().all()
+        return res.scalars().all()
 
-    # 3. Semantic ranking using cosine similarity
+    # =================================================
+    # 3. Semantic ranking (cosine distance via pgvector)
+    # =================================================
     stmt = text("""
-        SELECT p.*
+        SELECT p.id
         FROM products p
         JOIN embeddings e
           ON e.source_id = p.id
          AND e.source_type = 'product'
+        WHERE p.is_active = true
         ORDER BY e.embedding <=> :user_embedding
         LIMIT :limit
     """)
@@ -55,18 +62,27 @@ async def recommend_for_user(
         },
     )
 
-    product_ids = [row[0] for row in res.fetchall()]
+    product_ids = [row.id for row in res.fetchall()]
     if not product_ids:
         return []
 
-    # 4. Hydrate ORM objects
+    # =================================================
+    # 4. Preserve similarity order
+    # =================================================
+    order_map = {pid: idx for idx, pid in enumerate(product_ids)}
+
+    # =================================================
+    # 5. Hydrate products
+    # =================================================
     res = await db.execute(
         select(Product)
         .where(Product.id.in_(product_ids))
-        .options(
-            selectinload(Product.variants)
-            .selectinload(ProductVariant.images)
-        )
     )
+    products = res.scalars().all()
 
-    return res.scalars().unique().all()
+    # =================================================
+    # 6. Restore semantic ranking
+    # =================================================
+    products.sort(key=lambda p: order_map[p.id])
+
+    return products

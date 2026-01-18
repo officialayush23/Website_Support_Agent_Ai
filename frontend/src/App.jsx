@@ -17,7 +17,7 @@ import Cart from './pages/Demo/Cart';
 import Checkout from './pages/Demo/Checkout';
 import OrderDetail from './pages/Demo/OrderDetail';
 import ChatInterface from './pages/Demo/chat';
-import { ThemeProvider } from './context/ThemeContext';
+
 
 // --- Route Guards ---
 
@@ -50,7 +50,7 @@ const AdminRoute = () => {
 function App() {
   return (
     <AuthProvider>
-      <ThemeProvider>
+  
       <Toaster position="top-right" />
       <Router>
         <Routes>
@@ -97,7 +97,7 @@ function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Router>
-      </ThemeProvider>
+ 
     </AuthProvider>
   );
 }

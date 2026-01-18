@@ -168,7 +168,7 @@ async def end_session_for_user(
         select(Embedding)
         .where(
             Embedding.source_type == "chat_summary",
-            Embedding.source_id == session.id,
+            Embedding.source_id == ctx.id,
         )
         .order_by(Embedding.created_at.desc())
     )

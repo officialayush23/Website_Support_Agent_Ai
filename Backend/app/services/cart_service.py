@@ -1,10 +1,9 @@
 # app/services/cart_service.py
-
 from uuid import UUID, uuid4
-from typing import List, Dict
+from typing import Dict
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, delete,text
+from sqlalchemy import select, func, delete, text
 from sqlalchemy.orm import selectinload
 
 from app.models.models import (
@@ -15,15 +14,11 @@ from app.models.models import (
     GlobalInventory,
     StoreInventory,
     Pickup,
-    ProductVariant,
+    Product,
 )
 
-from app.schema.schemas import CheckoutCreate  # OK (request DTO)
-from app.models.enums import (
-    order_status_enum,          # DB write only
-    fulfillment_type_enum,
-    fulfillment_source_enum,
-)
+from app.schema.schemas import CheckoutCreate
+from app.models.enums import order_status_enum
 from app.schema.enums import (
     FulfillmentType,
     FulfillmentSource,
@@ -31,15 +26,13 @@ from app.schema.enums import (
     UserEventType,
 )
 
-from app.models.enums import user_event_type_enum
 from app.services.user_event_service import record_event
 from app.services.offer_service import list_active_offers, evaluate_offer
-from app.services.pickup_service import find_best_store_for_pickup
 from app.utils.api_error import not_found, bad_request
 
 
 # =====================================================
-# CART CORE (VARIANT BASED)
+# CART CORE (PRODUCT BASED)
 # =====================================================
 
 async def get_or_create_cart(db: AsyncSession, user_id: UUID) -> Cart:
@@ -63,10 +56,7 @@ async def get_cart_items(db: AsyncSession, user_id: UUID) -> Dict:
     res = await db.execute(
         select(CartItem)
         .where(CartItem.cart_id == cart.id)
-        .options(
-            selectinload(CartItem.variant)
-            .selectinload(ProductVariant.product)
-        )
+        .options(selectinload(CartItem.product))
     )
     items = res.scalars().all()
 
@@ -74,18 +64,16 @@ async def get_cart_items(db: AsyncSession, user_id: UUID) -> Dict:
     out_items = []
 
     for item in items:
-        price = float(item.variant.price)
+        price = float(item.product.price)
         line_total = price * item.quantity
         total += line_total
 
         out_items.append({
-            "variant_id": item.variant_id,
-            "product_id": item.variant.product_id,
-            "name": item.variant.product.name,
+            "product_id": item.product_id,
+            "name": item.product.name,
             "price": price,
             "quantity": item.quantity,
             "line_total": line_total,
-            "attributes": item.variant.attributes,
         })
 
     return {
@@ -99,7 +87,7 @@ async def add_item(
     db: AsyncSession,
     *,
     user_id: UUID,
-    variant_id: UUID,
+    product_id: UUID,
     quantity: int,
 ):
     if quantity <= 0:
@@ -109,7 +97,7 @@ async def add_item(
 
     item = await db.get(
         CartItem,
-        {"cart_id": cart.id, "variant_id": variant_id},
+        {"cart_id": cart.id, "product_id": product_id},
     )
 
     if item:
@@ -118,7 +106,7 @@ async def add_item(
         db.add(
             CartItem(
                 cart_id=cart.id,
-                variant_id=variant_id,
+                product_id=product_id,
                 quantity=quantity,
             )
         )
@@ -128,8 +116,8 @@ async def add_item(
     await record_event(
         db=db,
         user_id=user_id,
-        event_type=user_event_type_enum.add_to_cart,
-        variant_id=variant_id,
+        event_type=UserEventType.add_to_cart.value,
+        product_id=product_id,
     )
 
     await db.commit()
@@ -139,14 +127,14 @@ async def update_item(
     db: AsyncSession,
     *,
     user_id: UUID,
-    variant_id: UUID,
+    product_id: UUID,
     quantity: int,
 ):
     cart = await get_or_create_cart(db, user_id)
 
     item = await db.get(
         CartItem,
-        {"cart_id": cart.id, "variant_id": variant_id},
+        {"cart_id": cart.id, "product_id": product_id},
     )
     if not item:
         not_found("Cart item")
@@ -156,8 +144,8 @@ async def update_item(
         await record_event(
             db=db,
             user_id=user_id,
-            event_type=user_event_type_enum.remove_from_cart,
-            variant_id=variant_id,
+            event_type=UserEventType.remove_from_cart.value,
+            product_id=product_id,
         )
     else:
         item.quantity = quantity
@@ -175,18 +163,14 @@ async def clear_cart(db: AsyncSession, user_id: UUID):
 
 
 # =====================================================
-# AVAILABILITY (FALLBACK FOR UI)
+# STORE AVAILABILITY (UI)
 # =====================================================
+
 async def list_stores_that_can_fulfill_cart(
     db: AsyncSession,
     *,
     user_id: UUID,
 ) -> list[dict]:
-    """
-    Returns stores that can fulfill ENTIRE cart,
-    ordered by nearest distance to user.
-    """
-
     res = await db.execute(
         select(CartItem)
         .join(Cart)
@@ -196,8 +180,8 @@ async def list_stores_that_can_fulfill_cart(
     if not items:
         bad_request("Cart is empty")
 
-    variant_ids = [i.variant_id for i in items]
-    qty_map = {i.variant_id: i.quantity for i in items}
+    product_ids = [i.product_id for i in items]
+    qty_map = {i.product_id: i.quantity for i in items}
 
     res = await db.execute(
         text("""
@@ -209,15 +193,15 @@ async def list_stores_that_can_fulfill_cart(
         JOIN users u ON u.id = :user_id
         JOIN store_inventory si ON si.store_id = s.id
         WHERE s.is_active = true
-          AND si.variant_id = ANY(:variant_ids)
+          AND si.product_id = ANY(:product_ids)
         GROUP BY s.id, u.location
-        HAVING COUNT(DISTINCT si.variant_id) = :variant_count
+        HAVING COUNT(DISTINCT si.product_id) = :product_count
         ORDER BY distance
         """),
         {
             "user_id": user_id,
-            "variant_ids": variant_ids,
-            "variant_count": len(variant_ids),
+            "product_ids": product_ids,
+            "product_count": len(product_ids),
         },
     )
 
@@ -227,12 +211,12 @@ async def list_stores_that_can_fulfill_cart(
             select(StoreInventory)
             .where(
                 StoreInventory.store_id == row.store_id,
-                StoreInventory.variant_id.in_(variant_ids),
+                StoreInventory.product_id.in_(product_ids),
             )
         )
         inventories = inv_res.scalars().all()
 
-        if all(inv.in_hand_stock >= qty_map[inv.variant_id] for inv in inventories):
+        if all(inv.in_hand_stock >= qty_map[inv.product_id] for inv in inventories):
             stores.append({
                 "store_id": row.store_id,
                 "name": row.name,
@@ -242,9 +226,8 @@ async def list_stores_that_can_fulfill_cart(
     return stores
 
 
-
 # =====================================================
-# OFFERS PREVIEW (UI SAFE)
+# OFFERS PREVIEW
 # =====================================================
 
 async def preview_cart_offers(
@@ -257,7 +240,7 @@ async def preview_cart_offers(
     res = await db.execute(
         select(CartItem)
         .where(CartItem.cart_id == cart.id)
-        .options(selectinload(CartItem.variant))
+        .options(selectinload(CartItem.product))
     )
     items = res.scalars().all()
 
@@ -265,7 +248,7 @@ async def preview_cart_offers(
         return {"subtotal": 0, "offers": [], "best_discount": 0}
 
     subtotal = sum(
-        float(i.variant.price) * i.quantity for i in items
+        float(i.product.price) * i.quantity for i in items
     )
 
     offers = await list_active_offers(db)
@@ -291,62 +274,50 @@ async def preview_cart_offers(
 
 
 # =====================================================
-# CHECKOUT (STRICT + CANONICAL)
+# CHECKOUT (ATOMIC + SAFE)
 # =====================================================
+
 async def checkout(
     db: AsyncSession,
     *,
     user_id: UUID,
     payload: CheckoutCreate,
 ):
-    # =====================================================
-    # LOAD CART
-    # =====================================================
     cart = await get_or_create_cart(db, user_id)
 
     res = await db.execute(
         select(CartItem)
         .where(CartItem.cart_id == cart.id)
-        .options(selectinload(CartItem.variant))
+        .options(selectinload(CartItem.product))
     )
     items = res.scalars().all()
 
     if not items:
         bad_request("Cart is empty")
 
-    # deterministic ordering (important for locks)
-    items.sort(key=lambda x: x.variant_id)
+    items.sort(key=lambda x: x.product_id)
+    subtotal = sum(float(i.product.price) * i.quantity for i in items)
 
-    subtotal = sum(float(i.variant.price) * i.quantity for i in items)
-
-    # =====================================================
-    # FULFILLMENT VALIDATION
-    # =====================================================
     store_id: UUID | None = None
 
     if payload.fulfillment_type == FulfillmentType.pickup:
-        # ❗ user MUST choose store explicitly
         if not payload.store_id:
             bad_request("store_id is required for pickup")
 
         store_id = payload.store_id
 
-        # validate store can fulfill ENTIRE cart (lock store rows)
         for item in items:
             inv = await db.get(
                 StoreInventory,
                 {
                     "store_id": store_id,
-                    "variant_id": item.variant_id,
+                    "product_id": item.product_id,
                 },
                 with_for_update=True,
             )
             if not inv or inv.in_hand_stock < item.quantity:
                 bad_request("Selected store cannot fulfill cart")
 
-    # =====================================================
-    # OFFERS
-    # =====================================================
     offers = await list_active_offers(db)
     discount_total = max(
         (evaluate_offer(o, subtotal=subtotal) for o in offers),
@@ -355,9 +326,6 @@ async def checkout(
 
     total = max(subtotal - discount_total, 0)
 
-    # =====================================================
-    # CREATE ORDER
-    # =====================================================
     order = Order(
         id=uuid4(),
         user_id=user_id,
@@ -377,18 +345,15 @@ async def checkout(
     await record_event(
         db=db,
         user_id=user_id,
-        event_type=user_event_type_enum.checkout_started,
+        event_type=UserEventType.checkout_started.value,
     )
 
-    # =====================================================
-    # INVENTORY LOCK (ATOMIC + SAFE)
-    # =====================================================
-    # 1️⃣ validate global inventory first
+    # ===== GLOBAL INVENTORY LOCK =====
     for item in items:
         gi = (
             await db.execute(
                 select(GlobalInventory)
-                .where(GlobalInventory.variant_id == item.variant_id)
+                .where(GlobalInventory.product_id == item.product_id)
                 .with_for_update()
             )
         ).scalar_one_or_none()
@@ -396,9 +361,8 @@ async def checkout(
         if not gi or gi.total_stock - gi.reserved_stock < item.quantity:
             bad_request("Out of stock")
 
-    # 2️⃣ apply mutations only after all checks pass
     for item in items:
-        gi = await db.get(GlobalInventory, item.variant_id)
+        gi = await db.get(GlobalInventory, item.product_id)
         gi.reserved_stock += item.quantity
 
         if payload.fulfillment_type == FulfillmentType.pickup:
@@ -406,22 +370,19 @@ async def checkout(
                 StoreInventory,
                 {
                     "store_id": store_id,
-                    "variant_id": item.variant_id,
+                    "product_id": item.product_id,
                 },
             )
             inv.in_hand_stock -= item.quantity
 
-    # =====================================================
-    # ORDER ITEMS
-    # =====================================================
     for item in items:
         db.add(
             OrderItem(
                 id=uuid4(),
                 order_id=order.id,
-                variant_id=item.variant_id,
+                product_id=item.product_id,
                 quantity=item.quantity,
-                price=float(item.variant.price),
+                price=float(item.product.price),
                 fulfillment_source=(
                     FulfillmentSource.store.value
                     if payload.fulfillment_type == FulfillmentType.pickup
@@ -430,14 +391,11 @@ async def checkout(
                 fulfillment_ref_id=(
                     store_id
                     if payload.fulfillment_type == FulfillmentType.pickup
-                    else item.variant_id
+                    else item.product_id
                 ),
             )
         )
 
-    # =====================================================
-    # PICKUP RECORD
-    # =====================================================
     if payload.fulfillment_type == FulfillmentType.pickup:
         db.add(
             Pickup(
@@ -450,9 +408,6 @@ async def checkout(
             )
         )
 
-    # =====================================================
-    # CLEANUP + EVENTS
-    # =====================================================
     await db.execute(
         delete(CartItem).where(CartItem.cart_id == cart.id)
     )
@@ -460,15 +415,12 @@ async def checkout(
     await record_event(
         db=db,
         user_id=user_id,
-        event_type=user_event_type_enum.order_created,
+        event_type=UserEventType.order_created.value,
         order_id=order.id,
     )
 
     await db.commit()
 
-    # =====================================================
-    # RESPONSE
-    # =====================================================
     return {
         "order_id": order.id,
         "status": order.status,

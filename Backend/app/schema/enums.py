@@ -85,3 +85,21 @@ class UserEventType(str, Enum):
 class FulfillmentTargetEnum(str, Enum):
     global_inventory = "global_inventory"
     store_inventory = "store_inventory"
+
+class UserEventType(str,Enum):
+    view_product = "view_product"
+    click_product = "click_product"
+    search = "search"
+    filter = "filter"
+    add_to_cart = "add_to_cart"
+    remove_from_cart = "remove_from_cart"
+
+    checkout_started = "checkout_started"
+    order_created = "order_created"
+    payment_success = "payment_success"
+    payment_failed = "payment_failed"
+    order_cancelled = "order_cancelled"
+    refund_requested = "refund_requested"
+
+    complaint_created = "complaint_created"
+    chat_message = "chat_message"

@@ -34,7 +34,7 @@ async def create(
         order_id=order_id,
         description=desc,
         status=ComplaintStatus.open.value,
-        created_by="user",
+       
     )
 
     db.add(complaint)

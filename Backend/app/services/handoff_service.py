@@ -12,9 +12,6 @@ async def escalate_to_human(
         return
 
     convo.handled_by = "human"
-    convo.context = {
-        **(convo.context or {}),
-        "handoff_reason": reason,
-    }
+    
 
     await db.commit()

@@ -19,9 +19,8 @@ router = APIRouter(
 
 @router.post("/")
 async def upload_image(
-    variant_id: UUID,
+    product_id: UUID,
     file: UploadFile = File(...),
-    is_primary: bool = False,
     db: AsyncSession = Depends(get_db),
     user=Depends(get_current_user),
 ):
@@ -30,15 +29,13 @@ async def upload_image(
 
     img = await upload_product_image(
         db=db,
-        variant_id=variant_id,
+        product_id=product_id,
         file=file,
-        is_primary=is_primary,
     )
 
     return {
         "id": img.id,
         "url": img.image_url,
-        "is_primary": img.is_primary,
     }
 
 

@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { apiRequest } from '../../lib/api';
-import { useTheme } from '../../context/ThemeContext';
 import { useAnalytics } from '../../hooks/useAnalytics'; 
 import {
     ShoppingBag,
@@ -26,7 +25,7 @@ export default function DemoLayout() {
     const { user, profile, signOut } = useAuth();
     const [userLocation, setUserLocation] = useState(null);
     
-    const { theme, setTheme } = useTheme();
+
     // Analytics hook initialized (used automatically by child components or specific actions)
     const { trackEvent } = useAnalytics(); 
 
@@ -35,11 +34,7 @@ export default function DemoLayout() {
         navigate('/login');
     };
 
-    const toggleTheme = () => {
-        const newTheme = theme === 'dark' ? 'light' : 'dark';
-        setTheme(newTheme);
-        // Note: 'toggle_theme' is ignored by useAnalytics filter now
-    };
+
 
     // --- Location Sync Logic ---
     useEffect(() => {
@@ -106,18 +101,10 @@ export default function DemoLayout() {
                     })}
                 </nav>
 
-                <div className="p-4 border-t border-gray-100 dark:border-gray-800 space-y-2">
-                    {/* Theme Toggle */}
-                    <button 
-                        onClick={toggleTheme}
-                        className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-900 rounded-lg transition-colors"
-                    >
-                        {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-                        {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
-                    </button>
+                <div className="p-4 border-t border-gray-100  space-y-2">
 
-                    <NavLink to="/demo/profile" className="flex items-center gap-3 px-4 py-3 bg-gray-50 dark:bg-gray-900 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer group">
-                        <div className="h-8 w-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold text-xs">
+                    <NavLink to="/demo/profile" className="flex items-center gap-3 px-4 py-3 bg-gray-50  rounded-lg hover:bg-gray-100  transition-colors cursor-pointer group">
+                        <div className="h-8 w-8 rounded-full bg-blue-100  flex items-center justify-center text-blue-600  font-bold text-xs">
                             {user?.user_metadata?.full_name?.[0] || user?.email?.[0]?.toUpperCase()}
                         </div>
                         <div className="flex-1 min-w-0">
@@ -136,7 +123,7 @@ export default function DemoLayout() {
             </aside>
 
             {/* Mobile Header */}
-            <div className="md:hidden fixed top-0 left-0 right-0 h-16 bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800 z-30 flex items-center justify-between px-4">
+            <div className="md:hidden fixed top-0 left-0 right-0 h-16 bg-white  border-b border-gray-200  z-30 flex items-center justify-between px-4">
                 <span className="text-xl font-bold text-gray-900 dark:text-white" style={{ fontFamily: '"Charm", cursive' }}>Weeb</span>
                 <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2 text-gray-600 dark:text-gray-300">
                     {isMobileMenuOpen ? <X /> : <Menu />}
@@ -145,7 +132,7 @@ export default function DemoLayout() {
 
             {/* Mobile Menu */}
             {isMobileMenuOpen && (
-                <div className="fixed inset-0 z-20 bg-white dark:bg-gray-950 pt-20 px-4 md:hidden animate-in fade-in slide-in-from-top-10">
+                <div className="fixed inset-0 z-20 bg-white  pt-20 px-4 md:hidden animate-in fade-in slide-in-from-top-10">
                     <nav className="space-y-2">
                         {navItems.map((item) => (
                             <NavLink

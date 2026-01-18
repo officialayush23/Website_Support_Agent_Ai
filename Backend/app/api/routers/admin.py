@@ -1,10 +1,10 @@
-
 # app/api/routers/admin.py
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
 from sqlalchemy import select, func
+
 from app.core.database import get_db
 from app.core.auth import get_current_user
 from app.services.product_service import (
@@ -12,39 +12,38 @@ from app.services.product_service import (
     update_product,
     delete_product,
 )
-from app.models.models import Order
+from app.models.models import Order, GlobalInventory, Product
 from app.services.store_service import update_global_stock
 from app.schema.schemas import ProductCreate, ProductUpdate, GlobalStockUpdate
 from app.utils.api_error import forbidden
-from app.services.catalog_service import product_variant_breakdown,product_quantity_overview
+
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
 
 def admin_only(user):
     if user["role"] != "admin":
         forbidden()
-from app.models.models import GlobalInventory, ProductVariant
+
+
+# =====================================================
+# INVENTORY KPIs
+# =====================================================
 
 @router.get("/inventory/stats")
 async def inventory_stats(
     db: AsyncSession = Depends(get_db),
     user=Depends(get_current_user),
 ):
-    """
-    Returns high-level inventory KPIs for the Admin Dashboard.
-    """
-    if user["role"] != "admin":
-        forbidden()
+    admin_only(user)
 
-    # Total Value (Price * Total Stock)
     stmt_value = select(
-        func.sum(GlobalInventory.total_stock * ProductVariant.price)
-    ).join(ProductVariant, ProductVariant.id == GlobalInventory.variant_id)
-    
-    # Low Stock Count (< 10 items)
-    stmt_low = select(func.count(GlobalInventory.variant_id)).where(GlobalInventory.total_stock < 10)
+        func.sum(GlobalInventory.total_stock * Product.price)
+    ).join(Product, Product.id == GlobalInventory.product_id)
 
-    # Total Items
+    stmt_low = select(
+        func.count(GlobalInventory.product_id)
+    ).where(GlobalInventory.total_stock < 10)
+
     stmt_count = select(func.sum(GlobalInventory.total_stock))
 
     value = (await db.execute(stmt_value)).scalar() or 0
@@ -53,9 +52,14 @@ async def inventory_stats(
 
     return {
         "total_value": float(value),
-        "low_stock_variants": low_stock,
-        "total_items": total_items
+        "low_stock_products": low_stock,
+        "total_items": total_items,
     }
+
+
+# =====================================================
+# PRODUCTS
+# =====================================================
 
 @router.post("/products")
 async def create(
@@ -64,8 +68,16 @@ async def create(
     user=Depends(get_current_user),
 ):
     admin_only(user)
-    p = await create_product(db, **payload.model_dump())
-    return {"id": p.id}
+
+    product = await create_product(
+        db=db,
+        name=payload.name,
+        description=payload.description,
+        category=payload.category,
+        price=payload.price,
+        images=payload.images,
+    )
+    return {"id": product.id}
 
 
 @router.patch("/products/{product_id}")
@@ -76,6 +88,7 @@ async def update(
     user=Depends(get_current_user),
 ):
     admin_only(user)
+
     await update_product(
         db=db,
         product_id=product_id,
@@ -95,6 +108,10 @@ async def delete(
     return {"status": "deleted"}
 
 
+# =====================================================
+# GLOBAL INVENTORY
+# =====================================================
+
 @router.patch("/inventory/global")
 async def set_global_stock(
     payload: GlobalStockUpdate,
@@ -102,50 +119,68 @@ async def set_global_stock(
     user=Depends(get_current_user),
 ):
     admin_only(user)
+
     await update_global_stock(
         db=db,
-        variant_id=payload.variant_id,
+        product_id=payload.product_id,
         total_stock=payload.total_stock,
     )
     return {"status": "updated"}
 
-
-@router.get("/summary")
-async def kpi_summary(
-    db: AsyncSession = Depends(get_db),
-    user=Depends(get_current_user),
-):
-    if user["role"] != "admin":
-        forbidden()
-
-    res = await db.execute(
-        select(
-            func.count(Order.id),
-            func.sum(Order.total),
-        )
-    )
-
-    orders, revenue = res.first()
-
-    return {
-        "total_orders": orders or 0,
-        "total_revenue": float(revenue or 0),
-    }
 
 @router.get("/products/stock")
 async def product_stock_overview(
     db: AsyncSession = Depends(get_db),
     user=Depends(get_current_user),
 ):
+    """
+    Admin stock overview per product.
+    """
     admin_only(user)
-    return await product_quantity_overview(db)
+
+    res = await db.execute(
+        select(
+            Product.id,
+            Product.name,
+            Product.price,
+            GlobalInventory.total_stock,
+            GlobalInventory.allocated_stock,
+            GlobalInventory.reserved_stock,
+        )
+        .join(GlobalInventory, GlobalInventory.product_id == Product.id)
+    )
+
+    return [
+        {
+            "product_id": r.id,
+            "name": r.name,
+            "price": float(r.price),
+            "total_stock": r.total_stock,
+            "allocated_stock": r.allocated_stock,
+            "reserved_stock": r.reserved_stock,
+            "available_stock": r.total_stock - r.allocated_stock - r.reserved_stock,
+        }
+        for r in res
+    ]
 
 
-@router.get("/products/{product_id}/stock")
-async def product_stock_detail(
-    product_id: UUID,
+# =====================================================
+# SALES KPIs
+# =====================================================
+
+@router.get("/summary")
+async def kpi_summary(
     db: AsyncSession = Depends(get_db),
     user=Depends(get_current_user),
 ):
     admin_only(user)
-    return await product_variant_breakdown(db, product_id)
+
+    res = await db.execute(
+        select(func.count(Order.id), func.sum(Order.total))
+    )
+    orders, revenue = res.first()
+
+    return {
+        "total_orders": orders or 0,
+        "total_revenue": float(revenue or 0),
+    }
